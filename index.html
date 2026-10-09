@@ -178,8 +178,17 @@ $("send").onclick = async () => {
   $("loginmsg").textContent = error ? error.message : "Check your email for the sign-in link.";
 };
 $("out").onclick = async () => { await sb.auth.signOut(); location.reload(); };
-sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" && $("app").classList.contains("hidden")) location.reload(); });
-boot();
+let booted = false;
+async function start() {
+  if (booted) return;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { $("login").classList.remove("hidden"); return; }
+  booted = true; $("login").classList.add("hidden");
+  if (location.hash.includes("access_token")) history.replaceState(null, "", location.pathname);
+  boot();
+}
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN") setTimeout(start, 0); });
+start();
 </script>
 </body>
 </html>
