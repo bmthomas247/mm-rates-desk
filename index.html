@@ -125,9 +125,10 @@ function stays() {
     const ours = rows.filter(r => r.tier === "Ours");
     const abn = prim.filter(r => r.channel === "Airbnb").map(r => +r.total);
     const dir = prim.filter(r => r.channel === "Direct" && !r.pre_tax).map(r => +r.total);
+    const vr = prim.filter(r => r.channel === "VRBO").map(r => +r.total);
     const ourAb = ours.find(r => r.channel === "Airbnb" && r.status === "available");
     const medAb = median(abn);
-    return { ci, co, w, rows, nAb: abn.length, nDir: dir.length, lowAb: Math.min(...abn), medAb, highAb: Math.max(...abn),
+    return { ci, co, w, rows, nVr: vr.length, medVr: median(vr), nAb: abn.length, nDir: dir.length, lowAb: Math.min(...abn), medAb, highAb: Math.max(...abn),
       medDir: median(dir), ourAb: ourAb ? +ourAb.total : null, ourStatus: ours[0]?.status,
       gap: ourAb && medAb ? (ourAb.total / medAb - 1) * 100 : null };
   }).sort((a, b) => a.ci.localeCompare(b.ci) || a.w.localeCompare(b.w));
@@ -138,7 +139,12 @@ function renderOurs(S) {
   const nComps = state.comps.filter(c => c.tier !== "Ours");
   let h = `<h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.filter(c => c.tier === "Primary").length} Primary comps · ${nComps.filter(c => c.tier === "Secondary").length} Secondary)</span></h2>`;
   if (!ours.length) { $("ours").innerHTML = h + `<p class="muted">None of our homes are in this set yet.</p>`; return; }
-  h += `<div class="wrap"><table><tr><th>Home</th><th>Beds / sleeps</th><th>Listings</th><th>Open next 30 nights</th><th>Open stays priced</th><th>vs Primary median</th></tr>`;
+  h += `<div class="wrap"><table><tr><th>Home</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked 30 / 60 / 90 nights<br><span class="muted small">ours vs comp median</span></th><th>Open stays priced</th><th>vs Primary median</th></tr>`;
+  const blk = (cal, n) => { if (!cal) return null; const off = Math.round((new Date().setHours(12,0,0,0) - new Date(cal.start_date + "T12:00:00")) / 864e5); const a = cal.avail.slice(off, off + n); return a.length ? a.split("").filter(v => v === "0").length / a.length * 100 : null; };
+  const compCals = state.cal.filter(x => x.tier === "Primary");
+  const compBlk = n => { const v = compCals.map(c => blk(c, n)).filter(x => x != null); return v.length ? median(v) : null; };
+  const pc = v => v == null ? "—" : Math.round(v) + "%";
+  const cb = { 30: compBlk(30), 60: compBlk(60), 90: compBlk(90) };
   for (const c of ours) {
     const links = (c.comp_links || []).filter(l => l.active);
     const cal = state.cal.find(x => x.comp_id === c.id);
@@ -149,10 +155,10 @@ function renderOurs(S) {
     h += `<tr><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td>
       <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td>
       <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ") : '<span class="muted">no listing linked yet</span>'}</td>
-      <td>${open30 == null ? "—" : open30 + " of 30"}</td><td>${mine.length || "—"}</td>
+      <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td><td>${mine.length || "—"}</td>
       <td class="${avgGap >= 15 ? "up" : avgGap <= -15 ? "down" : ""}">${avgGap == null ? "—" : (avgGap > 0 ? "+" : "") + Math.round(avgGap) + "% avg"}</td></tr>`;
   }
-  $("ours").innerHTML = h + `</table></div><p class="small muted">Airbnb pre-tax totals vs the Primary median for the same stays. Open nights from the Airbnb calendar (ESTIMATE).</p>`;
+  $("ours").innerHTML = h + `</table></div><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Price gap = our Airbnb pre-tax total vs the Primary median for the same stays.</p>`;
 }
 
 function quant(a, q) { a = a.slice().sort((x, y) => x - y); if (!a.length) return null; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); }
@@ -242,11 +248,11 @@ function render() {
   } else { $("fill").innerHTML = `<p class="muted small">No calendar data yet.</p>`; $("fillaxis").innerHTML = ""; }
 
   // Grid
-  $("grid").innerHTML = `<tr><th>Stay</th><th>Ours · Airbnb</th><th>vs median</th><th>Comps Airbnb low</th><th>median</th><th>high</th><th># priced</th><th>Comps Direct all-in median</th></tr>` +
+  $("grid").innerHTML = `<tr><th>Stay</th><th>Ours · Airbnb</th><th>vs median</th><th>Airbnb comps low</th><th>Airbnb median</th><th>high</th><th>#</th><th>VRBO median</th><th>Direct median (all-in)</th></tr>` +
     S.map((s, i) => `<tr class="click" data-i="${i}"><td>${s.ci} → ${s.co} <span class="muted small">${WIN[s.w]}</span></td>
       <td>${s.ourAb != null ? fmt(s.ourAb) : `<span class="muted">${s.ourStatus || "—"}</span>`}</td>
       <td class="${s.gap >= 15 ? "up" : s.gap <= -15 ? "down" : ""}">${pct(s.gap)}</td>
-      <td>${s.nAb ? fmt(s.lowAb) : "—"}</td><td><b>${fmt(s.medAb)}</b></td><td>${s.nAb ? fmt(s.highAb) : "—"}</td><td>${s.nAb}</td><td>${fmt(s.medDir)} <span class="muted small">(${s.nDir})</span></td></tr>`).join("");
+      <td>${s.nAb ? fmt(s.lowAb) : "—"}</td><td><b>${fmt(s.medAb)}</b></td><td>${s.nAb ? fmt(s.highAb) : "—"}</td><td>${s.nAb}</td><td>${s.nVr ? fmt(s.medVr) + ` <span class="muted small">(${s.nVr})</span>` : '<span class="muted small">not pulled yet</span>'}</td><td>${fmt(s.medDir)} <span class="muted small">(${s.nDir})</span></td></tr>`).join("");
   $("grid").onclick = e => { const tr = e.target.closest("tr[data-i]"); if (tr) detail(S[+tr.dataset.i]); };
 }
 
@@ -275,14 +281,18 @@ $("addcomp").onclick = async () => {
 };
 
 function detail(s) {
-  const rows = s.rows.slice().sort((a, b) => (a.tier > b.tier ? 1 : -1) || (+a.total || 9e9) - (+b.total || 9e9));
-  $("dlgbody").innerHTML = `<h2>${s.ci} → ${s.co} · ${WIN[s.w]} · 2 guests</h2><div class="wrap"><table>
-   <tr><th>Home</th><th>Tier</th><th>Channel</th><th>Status</th><th>Rent</th><th>Cleaning</th><th>Fees</th><th>Taxes</th><th>Total</th><th>Per night</th><th>Strike / deal</th><th>Source</th></tr>` +
-   rows.map(r => `<tr><td>${r.label}</td><td>${r.tier}</td><td>${r.channel}</td><td>${r.status}${r.min_nights ? ` <span class="muted small">min ${r.min_nights}</span>` : ""}</td>
-    <td>${fmt(r.rent)}</td><td>${fmt(r.cleaning)}</td><td>${fmt(r.fees)}</td><td>${r.pre_tax ? '<span class="pill">PRE-TAX</span>' : fmt(r.taxes)}</td>
-    <td><b>${fmt(r.total)}</b></td><td>${r.total ? fmt(r.total / r.nights) : "—"}</td>
-    <td>${r.crossed_out ? `<s>${fmt(r.crossed_out)}</s> ${r.discount_pct}%` : ""} ${r.deal_label || ""}</td>
-    <td><a href="${r.url}" target="_blank" rel="noopener">link</a> <span class="muted small">${new Date(r.captured_at).toLocaleDateString()}</span></td></tr>`).join("") + `</table></div>`;
+  const byHome = {};
+  for (const r of s.rows) (byHome[r.comp_id] ||= { r0: r, ch: {} }).ch[r.channel] = r;
+  const comp = id => state.comps.find(c => c.id === id) || {};
+  const order = { Ours: 0, Primary: 1, Secondary: 2 };
+  const homes = Object.entries(byHome).map(([id, h]) => ({ id, ...h, c: comp(id) }))
+    .sort((a, b) => (order[a.r0.tier] - order[b.r0.tier]) || ((+a.ch.Airbnb?.total || 9e9) - (+b.ch.Airbnb?.total || 9e9)));
+  const cell = r => !r ? '<span class="muted small">—</span>' : r.status !== "available" ? `<span class="muted small">${r.status}${r.min_nights ? " · min " + r.min_nights : ""}</span>`
+    : `<a href="${r.url}" target="_blank" rel="noopener"><b>${fmt(r.total)}</b></a>${r.pre_tax ? ' <span class="pill">PRE-TAX</span>' : ""}<br><span class="muted small">${fmt(r.total / r.nights)}/night${r.cleaning ? " · clean " + fmt(r.cleaning) : ""}${r.crossed_out ? ` · <s>${fmt(r.crossed_out)}</s> ${r.discount_pct}%` : ""}${r.deal_label ? " · " + r.deal_label : ""}</span>`;
+  $("dlgbody").innerHTML = `<h2>${s.ci} → ${s.co} · ${WIN[s.w]} · 2 guests</h2>
+   <p class="small muted">Airbnb = listing total before taxes. Direct = full checkout incl. taxes and fees. VRBO isn't pulled automatically yet. Click a price for its source page. Captured ${new Date(s.rows[0].captured_at).toLocaleString()}.</p>
+   <div class="wrap"><table><tr><th>Home</th><th>Property manager</th><th>Tier</th><th>Airbnb</th><th>VRBO</th><th>Direct</th></tr>` +
+   homes.map(h => `<tr><td><b>${h.r0.label}</b></td><td>${h.c.host || '<span class="muted">unknown</span>'}</td><td>${h.r0.tier}</td><td>${cell(h.ch.Airbnb)}</td><td>${cell(h.ch.VRBO)}</td><td>${cell(h.ch.Direct)}</td></tr>`).join("") + `</table></div>`;
   $("dlg").showModal();
 }
 
