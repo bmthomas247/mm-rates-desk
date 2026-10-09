@@ -66,6 +66,8 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 #grid td:nth-child(2),#grid th:nth-child(2){text-align:left}
 .xbtn{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
 .xbtn:hover{color:var(--red);border-color:var(--red)}
+.ourrow td{background:var(--tealbg)}.ourrow td:first-child b{color:var(--teal2)}.ourrow td:nth-child(2){color:var(--teal2);font-weight:600}
+th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
 </style>
 </head>
 <body>
@@ -184,7 +186,7 @@ function renderOurs(S) {
     const mine = S.map(st => ({ st, r: st.rows.find(r => r.comp_id === c.id && r.channel === "Airbnb" && r.status === "available") })).filter(x => x.r && x.st.medAb);
     const gaps = mine.map(x => (x.r.total / x.st.medAb - 1) * 100);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    h += `<tr><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td>
+    h += `<tr><td><b style="color:var(--teal2)">${c.label}</b><br><span class="muted small">${c.address || ""}</span></td>
       <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td>
       <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ") : '<span class="muted">no listing linked yet</span>'}</td>
       <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
@@ -343,6 +345,18 @@ function renderResults(pn) {
     const a = availOf(c.id), st = a ? (nights.every(k => a(k) === "1") ? "open" : nights.some(k => a(k) === "1") ? "partly blocked" : "blocked") : null;
     return { c, st, q: { Airbnb: quote(c.id, "Airbnb"), VRBO: quote(c.id, "VRBO"), Direct: quote(c.id, "Direct") } };
   });
+  // Sort (our homes stay pinned on top). Click a header to sort; click again to flip.
+  const sk = state.sort || {};
+  if (sk.key) {
+    const val = r => sk.key === "host" ? (r.c.host || "\uffff").toLowerCase() : (r.q[sk.key]?.total ?? null);
+    rows.sort((a, b) => {
+      if ((a.c.tier === "Ours") !== (b.c.tier === "Ours")) return a.c.tier === "Ours" ? -1 : 1;
+      const x = val(a), y = val(b);
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (x < y ? -1 : x > y ? 1 : 0) * sk.dir;
+    });
+  }
+  const th = (key, label) => `<th class="sortable" data-sort="${key}">${label}${sk.key === key ? (sk.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
   const cell = q => !q ? '<span class="muted small">—</span>' : q.status ? `<span class="muted small">${q.status}${q.min ? " · min " + q.min : ""}</span>` :
     `${q.url ? `<a href="${q.url}" target="_blank" rel="noopener"><b>${fmt(q.total)}</b></a>` : `<b>${fmt(q.total)}</b>`}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night</span>`;
   const compAb = rows.filter(r => r.c.tier === "Primary" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
@@ -358,9 +372,11 @@ function renderResults(pn) {
       <div class="tile"><span>Ours vs comps</span><b class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">${pct(gap)}</b></div>
       <div class="tile"><span>Primary comps blocked</span><b>${blockedPct == null ? "—" : Math.round(blockedPct) + "%"}</b><span>ESTIMATE</span></div>
       <div class="tile"><span>Our homes open</span><b>${oursRows.length ? oursRows.filter(r => r.st === "open").length + " of " + oursRows.length : "—"}</b></div></div>
-    <div class="wrap"><table><tr><th>Home</th><th>Property manager</th><th>Tier</th><th>Calendar</th><th>Airbnb</th><th>VRBO</th><th>Direct</th></tr>` +
-    rows.map(r => `<tr><td><b>${r.c.label}</b></td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.c.tier}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb)}</td><td>${cell(r.q.VRBO)}</td><td>${cell(r.q.Direct)}</td></tr>`).join("") +
+    <div class="wrap"><table id="restable"><tr><th>Home</th>${th("host", "Property manager")}<th>Tier</th><th>Calendar</th>${th("Airbnb", "Airbnb")}${th("VRBO", "VRBO")}${th("Direct", "Direct")}</tr>` +
+    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td><b>${r.c.label}</b></td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.c.tier}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb)}</td><td>${cell(r.q.VRBO)}</td><td>${cell(r.q.Direct)}</td></tr>`).join("") +
     `</table></div><p class="small muted">Exact = we pulled this exact stay (click the price for its source page). ESTIMATE = built from the nightly prices of pulled stays that cover these nights. Calendar from Airbnb (blocked ≠ booked).</p>`;
+  $("restable").onclick = e => { const h = e.target.closest("th[data-sort]"); if (!h) return;
+    const k = h.dataset.sort; state.sort = { key: k, dir: sk.key === k ? -sk.dir : 1 }; renderResults(pn); };
 }
 
 function flagLists(S) {
