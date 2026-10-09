@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MM Rates Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#1a1a1a;--ink2:#475467;--muted:#7a8290;--line:#e4e7df;--teal:#88b535;--teal2:#4f7a14;--tealbg:#eef5e3;--onteal:#101828;
+--red:#c2410c;--redbg:#fdeee6;--amber:#a16207;--amberbg:#fdf6e0;--green:#15803d;--greenbg:#e6f5ea;--bar:#b9d68a;--barwk:#6e9a24;--head:#1a1a1a;--headink:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#111311;--card:#1b1e1a;--ink:#eceee9;--ink2:#b9c0b2;--muted:#8a9284;--line:#2c3129;--teal:#9cc94a;--teal2:#b5da72;--tealbg:#25301a;--onteal:#101828;
+--red:#fb8f5c;--redbg:#3a2016;--amber:#f2c14e;--amberbg:#352b12;--green:#5fd38a;--greenbg:#143222;--bar:#4f6e1f;--barwk:#9cc94a;--head:#0a0b0a;--headink:#fff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,sans-serif}
+header{background:var(--head);color:var(--headink);border-bottom:4px solid var(--teal);padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;font-weight:700}header h1 span{color:var(--teal)}
+.sp{flex:1}.muted{color:var(--muted)}.small{font-size:12px}
+main{max-width:1180px;margin:0 auto;padding:16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--ink2);padding:7px 12px;border-radius:999px;cursor:pointer;font:inherit}
+.tab.on{background:var(--teal);border-color:var(--teal);color:var(--onteal);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:12px}.kpi b{display:block;font-size:22px;color:var(--teal2)}
+.flag{border-radius:10px;padding:10px 12px;margin:6px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.flag.red{background:var(--redbg)}.flag.ok{background:var(--greenbg)}.flag.amb{background:var(--amberbg)}
+.flag strong{min-width:150px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:500;font-size:12px}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--tealbg)}
+.wrap{overflow-x:auto}
+.up{color:var(--red);font-weight:600}.down{color:var(--green);font-weight:600}
+a{color:var(--teal2)}
+.chart{display:flex;align-items:flex-end;gap:2px;height:140px;padding-top:6px;border-bottom:1px solid var(--line)}
+.chart div{flex:1;background:var(--bar);border-radius:4px 4px 0 0;min-height:2px;position:relative}
+.chart div.wk{background:var(--barwk)}.chart div.ours::after{content:"";position:absolute;left:50%;top:-8px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--red)}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+#login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
+button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
+.hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:900px;width:95vw;padding:16px}
+</style>
+</head>
+<body>
+<header><img src="https://www.vacationrentalsparkcity.com/wp-content/uploads/2024/07/Vacation-Rentals-Park-City-Moose-management-logo-.png" alt="" style="height:34px;background:#fff;border-radius:6px;padding:2px 4px"><h1>Moose Management <span>Rates Desk</span></h1><div class="sp"></div><span id="runinfo" class="small" style="opacity:.8"></span><button id="out" class="tab hidden">Sign out</button></header>
+
+<div id="login" class="card hidden">
+  <h2>Sign in</h2><p class="muted small">We'll email you a sign-in link. Only approved emails can see data.</p>
+  <input id="email" type="email" placeholder="you@email.com"><button class="primary" id="send">Email me a link</button>
+  <p id="loginmsg" class="small muted"></p>
+</div>
+
+<main id="app" class="hidden">
+  <div class="tabs" id="tabs"></div>
+  <div class="card" id="flags"></div>
+  <div class="card"><h2>Comp calendar fill — next 120 nights <span class="pill">ESTIMATE</span></h2>
+    <p class="small muted">Share of Primary comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
+    <div class="chart" id="fill"></div><div class="axis" id="fillaxis"></div></div>
+  <div class="card"><h2>Stays — ours vs Primary comps</h2>
+    <p class="small muted">Airbnb = listing-page total for the stay, before taxes (PRE-TAX; same basis for ours and comps). Direct = all-in checkout total incl. taxes and fees. Click a row for every comp + source link.</p>
+    <div class="wrap"><table id="grid"></table></div></div>
+</main>
+<dialog id="dlg"><div id="dlgbody"></div><button class="tab" onclick="dlg.close()">Close</button></dialog>
+
+<script>
+const SUPABASE_URL = "https://ohkndupfdgrrrdtyjzfv.supabase.co";
+const SUPABASE_KEY = "sb_publishable_8aLPLzE2gqIGC_NZRnzwFw_tBy8JXe3"; // public key; data is protected by sign-in + RLS
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const fmt = n => n == null ? "—" : "$" + Math.round(n).toLocaleString();
+const pct = n => n == null ? "—" : (n > 0 ? "+" : "") + Math.round(n) + "%";
+const median = a => { a = a.filter(x => x != null).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+const WIN = { we: "Fri–Sun", we3: "Fri–Mon", mw: "Sun–Wed" };
+let state = { sets: [], set: null, comps: [], checks: [], cal: [] };
+
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { $("login").classList.remove("hidden"); return; }
+  $("out").classList.remove("hidden"); $("app").classList.remove("hidden");
+  const [{ data: sets, error }, { data: runs }] = await Promise.all([
+    sb.from("rate_sets").select("*").eq("active", true).order("name"),
+    sb.from("runs").select("*").order("started_at", { ascending: false }).limit(1)]);
+  if (error || !sets?.length) { $("flags").innerHTML = `<p>No access yet — ask Brandon to add <b>${session.user.email}</b> to allowed users.</p>`; return; }
+  const r = runs?.[0];
+  if (r) $("runinfo").textContent = `Last pull ${new Date(r.started_at).toLocaleString()} · ${r.mode} · ${r.status} · ${r.rows_written} rows`;
+  state.sets = sets;
+  $("tabs").innerHTML = sets.map(s => `<button class="tab" data-id="${s.id}">${s.name}</button>`).join("");
+  $("tabs").onclick = e => e.target.dataset.id && load(e.target.dataset.id);
+  load(sets[0].id);
+}
+
+async function load(setId) {
+  state.set = state.sets.find(s => s.id === setId);
+  [...$("tabs").children].forEach(b => b.classList.toggle("on", b.dataset.id === setId));
+  const today = new Date().toISOString().slice(0, 10);
+  const [c, k, cal] = await Promise.all([
+    sb.from("comps").select("*,comp_links(*)").eq("set_id", setId).eq("active", true),
+    sb.from("latest_checks").select("*").eq("set_id", setId).gte("check_in", today).order("check_in").limit(5000),
+    sb.from("latest_calendar").select("*").eq("set_id", setId)]);
+  state.comps = c.data || []; state.checks = k.data || []; state.cal = cal.data || [];
+  render();
+}
+
+function stays() {
+  const by = {};
+  for (const r of state.checks) { const key = r.check_in + "|" + r.check_out + "|" + r.window_code; (by[key] ||= []).push(r); }
+  return Object.entries(by).map(([key, rows]) => {
+    const [ci, co, w] = key.split("|");
+    const prim = rows.filter(r => r.tier === "Primary" && r.status === "available");
+    const ours = rows.filter(r => r.tier === "Ours");
+    const abn = prim.filter(r => r.channel === "Airbnb").map(r => +r.total);
+    const dir = prim.filter(r => r.channel === "Direct" && !r.pre_tax).map(r => +r.total);
+    const ourAb = ours.find(r => r.channel === "Airbnb" && r.status === "available");
+    const medAb = median(abn);
+    return { ci, co, w, rows, nAb: abn.length, nDir: dir.length, lowAb: Math.min(...abn), medAb, highAb: Math.max(...abn),
+      medDir: median(dir), ourAb: ourAb ? +ourAb.total : null, ourStatus: ours[0]?.status,
+      gap: ourAb && medAb ? (ourAb.total / medAb - 1) * 100 : null };
+  }).sort((a, b) => a.ci.localeCompare(b.ci) || a.w.localeCompare(b.w));
+}
+
+function render() {
+  const S = stays();
+  // Flags first
+  const red = S.filter(s => s.gap != null && s.gap >= 15 && s.nAb >= 3);
+  const low = S.filter(s => s.gap != null && s.gap <= -15 && s.nAb >= 3);
+  const thin = S.filter(s => s.nAb > 0 && s.nAb < 3).length;
+  let h = `<h2>Flags</h2>`;
+  if (!S.length) h += `<p class="muted">No pulls yet for this set.</p>`;
+  h += red.slice(0, 12).map(s => `<div class="flag red"><strong>🔴 ${s.ci} · ${WIN[s.w]}</strong> Ours ${fmt(s.ourAb)} vs Primary median ${fmt(s.medAb)} (<span class="up">${pct(s.gap)}</span>, ${s.nAb} comps). Suggested: bring the stay to about ${fmt(s.medAb)} — ${fmt(s.ourAb - s.medAb)} less.</div>`).join("");
+  if (red.length > 12) h += `<p class="small muted">+${red.length - 12} more red stays in the table below.</p>`;
+  h += low.slice(0, 6).map(s => `<div class="flag amb"><strong>🟡 ${s.ci} · ${WIN[s.w]}</strong> Ours ${fmt(s.ourAb)} is ${pct(s.gap)} under the Primary median ${fmt(s.medAb)} — room to raise about ${fmt(s.medAb - s.ourAb)} if it books.</div>`).join("");
+  if (S.length && !red.length && !low.length) h += `<div class="flag ok"><strong>✓ In line</strong> No open stay is 15%+ above or below the Primary median.</div>`;
+  h += `<p class="small muted">"Booked too low" needs our reservations, which aren't connected yet. ${thin ? thin + " stays have fewer than 3 priced comps and aren't flagged." : ""} All figures ESTIMATE until reviewed.</p>`;
+  $("flags").innerHTML = h;
+
+  // Fill chart
+  const prim = state.cal.filter(c => c.tier === "Primary"), ours = state.cal.find(c => c.tier === "Ours");
+  if (prim.length) {
+    const start = new Date(prim[0].start_date + "T12:00:00"); const bars = [];
+    for (let i = 0; i < 120; i++) {
+      const d = new Date(start); d.setDate(d.getDate() + i); const iso = d.toISOString().slice(0, 10);
+      const vals = prim.map(c => { const off = Math.round((d - new Date(c.start_date + "T12:00:00")) / 864e5); return c.avail[off]; }).filter(v => v != null);
+      const blocked = vals.filter(v => v === "0").length / (vals.length || 1);
+      const oo = ours ? ours.avail[Math.round((d - new Date(ours.start_date + "T12:00:00")) / 864e5)] === "1" : false;
+      const wk = d.getDay() === 5 || d.getDay() === 6;
+      bars.push(`<div class="${wk ? "wk" : ""} ${oo ? "ours" : ""}" style="height:${Math.max(2, blocked * 100)}%" title="${iso}: ${Math.round(blocked * 100)}% of ${vals.length} comps blocked${ours ? (oo ? " · ours OPEN" : " · ours blocked") : ""}"></div>`);
+    }
+    $("fill").innerHTML = bars.join("");
+    $("fillaxis").innerHTML = `<span>${prim[0].start_date}</span><span>+60 nights</span><span>+120</span>`;
+  } else { $("fill").innerHTML = `<p class="muted small">No calendar data yet.</p>`; $("fillaxis").innerHTML = ""; }
+
+  // Grid
+  $("grid").innerHTML = `<tr><th>Stay</th><th>Ours · Airbnb</th><th>vs median</th><th>Comps Airbnb low</th><th>median</th><th>high</th><th># priced</th><th>Comps Direct all-in median</th></tr>` +
+    S.map((s, i) => `<tr class="click" data-i="${i}"><td>${s.ci} → ${s.co} <span class="muted small">${WIN[s.w]}</span></td>
+      <td>${s.ourAb != null ? fmt(s.ourAb) : `<span class="muted">${s.ourStatus || "—"}</span>`}</td>
+      <td class="${s.gap >= 15 ? "up" : s.gap <= -15 ? "down" : ""}">${pct(s.gap)}</td>
+      <td>${s.nAb ? fmt(s.lowAb) : "—"}</td><td><b>${fmt(s.medAb)}</b></td><td>${s.nAb ? fmt(s.highAb) : "—"}</td><td>${s.nAb}</td><td>${fmt(s.medDir)} <span class="muted small">(${s.nDir})</span></td></tr>`).join("");
+  $("grid").onclick = e => { const tr = e.target.closest("tr[data-i]"); if (tr) detail(S[+tr.dataset.i]); };
+}
+
+function detail(s) {
+  const rows = s.rows.slice().sort((a, b) => (a.tier > b.tier ? 1 : -1) || (+a.total || 9e9) - (+b.total || 9e9));
+  $("dlgbody").innerHTML = `<h2>${s.ci} → ${s.co} · ${WIN[s.w]} · 2 guests</h2><div class="wrap"><table>
+   <tr><th>Home</th><th>Tier</th><th>Channel</th><th>Status</th><th>Rent</th><th>Cleaning</th><th>Fees</th><th>Taxes</th><th>Total</th><th>Per night</th><th>Strike / deal</th><th>Source</th></tr>` +
+   rows.map(r => `<tr><td>${r.label}</td><td>${r.tier}</td><td>${r.channel}</td><td>${r.status}${r.min_nights ? ` <span class="muted small">min ${r.min_nights}</span>` : ""}</td>
+    <td>${fmt(r.rent)}</td><td>${fmt(r.cleaning)}</td><td>${fmt(r.fees)}</td><td>${r.pre_tax ? '<span class="pill">PRE-TAX</span>' : fmt(r.taxes)}</td>
+    <td><b>${fmt(r.total)}</b></td><td>${r.total ? fmt(r.total / r.nights) : "—"}</td>
+    <td>${r.crossed_out ? `<s>${fmt(r.crossed_out)}</s> ${r.discount_pct}%` : ""} ${r.deal_label || ""}</td>
+    <td><a href="${r.url}" target="_blank" rel="noopener">link</a> <span class="muted small">${new Date(r.captured_at).toLocaleDateString()}</span></td></tr>`).join("") + `</table></div>`;
+  $("dlg").showModal();
+}
+
+$("send").onclick = async () => {
+  const email = $("email").value.trim(); if (!email) return;
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href.split("#")[0] } });
+  $("loginmsg").textContent = error ? error.message : "Check your email for the sign-in link.";
+};
+$("out").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" && $("app").classList.contains("hidden")) location.reload(); });
+boot();
+</script>
+</body>
+</html>
