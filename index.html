@@ -415,8 +415,17 @@ function renderDirectFees() {
   const rows = state.checks.filter(r => r.channel === "Direct" && r.status === "available" && r.total && !r.pre_tax);
   if (!rows.length) { $("directFees").innerHTML = ""; return; }
   const comp = id => state.comps.find(c => c.id === id) || {};
+  // Our site folds every fee into "Rent" (Track booking-engine quote = Rent + Taxes only). Split it back out (ESTIMATE):
+  // cleaning = shown + hidden per unit (HK sheet, uploaded 2026-10-08), then admin 8.3% + damage waiver 5% of base rent
+  // (Track fees #82, #81, Display As = Rent; claude/reference/mm-fees-2026-10-08.md).
+  const HK = { "3676": [280, 95], "1206": [215, 70], "1403": [235, 80], "1404": [240, 80], "4104": [210, 70], "4205": [210, 70],
+    "4206": [245, 80], "4403": [185, 60], "2308": [245, 80] };
+  const split = r => { const num = ((comp(r.comp_id).label || "").match(/\d{4}/) || [])[0], hk = HK[num];
+    if (!hk || r.rent == null) return r; const clean = hk[0] + hk[1], base = (+r.rent - clean) / 1.133;
+    return { ...r, rent: base, cleaning: clean, cleanHidden: hk[1], fees: +r.rent - clean - base, est: true }; };
   const groups = {};
-  for (const r of rows) {
+  for (const r0 of rows) {
+    const r = r0.tier === "Ours" ? split(r0) : r0;
     const c = comp(r.comp_id), key = r.tier === "Ours" ? "Moose Management (ours)" : (c.host || "Unknown manager");
     (groups[key] ||= []).push(r);
   }
@@ -424,9 +433,10 @@ function renderDirectFees() {
   const line = (name, a) => {
     const rent = avg(a, r => +r.rent), clean = avg(a, r => r.cleaning == null ? 0 : +r.cleaning), fees = avg(a, r => r.fees == null ? 0 : +r.fees),
       tax = avg(a, r => +r.taxes), tot = avg(a, r => +r.total), n = avg(a, r => r.nights), homes = new Set(a.map(r => r.comp_id)).size;
-    const feeAll = (clean || 0) + (fees || 0);
+    const feeAll = (clean || 0) + (fees || 0), est = a.some(r => r.est), E = est ? '<br><span class="muted small">ESTIMATE · in rent</span>' : "";
+    const hid = est ? avg(a, r => r.cleanHidden) : null;
     return `<tr class="${name.includes("ours") ? "ourrow" : ""}"><td><b>${name}</b><br><span class="muted small">${homes} home${homes > 1 ? "s" : ""} · ${a.length} stay${a.length > 1 ? "s" : ""} · avg ${n.toFixed(1)} nights</span></td>
-      <td>${fmt(rent)}</td><td>${clean ? fmt(clean) : '<span class="muted">$0 shown</span>'}</td><td>${fees ? fmt(fees) : '<span class="muted">$0 shown</span>'}</td>
+      <td>${fmt(rent)}${est ? '<br><span class="muted small">ESTIMATE · base</span>' : ""}</td><td>${clean ? fmt(clean) : '<span class="muted">$0 shown</span>'}${est ? `<br><span class="muted small">incl. ${fmt(hid)} hidden</span>` : ""}</td><td>${fees ? fmt(fees) : '<span class="muted">$0 shown</span>'}${est ? '<br><span class="muted small">admin 8.3% + damage 5%</span>' : ""}</td>
       <td><b>${fmt(feeAll)}</b><br><span class="muted small">${tot ? Math.round(feeAll / tot * 100) : 0}% of total</span></td><td>${fmt(tax)}</td><td><b>${fmt(tot)}</b><br><span class="muted small">${fmt(tot / n)}/night</span></td></tr>`;
   };
   const keys = Object.keys(groups).sort((a, b) => (b.includes("ours") - a.includes("ours")) || a.localeCompare(b));
@@ -439,7 +449,7 @@ function renderDirectFees() {
   $("directFees").innerHTML = `<h3 class="chh">Average direct-booking fees per stay</h3>${bars}
     <div class="wrap"><table><tr><th>Property manager</th><th>Rent</th><th>Cleaning</th><th>Other fees</th><th>Total fees</th><th>Taxes</th><th>Checkout total</th></tr>` +
     keys.map(k => line(k, groups[k])).join("") + `</table></div>
-    <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). Our site rolls admin, damage waiver and part of cleaning into the rent, so it shows $0 fees; see claude/reference/mm-fees-2026-10-08.md.</p>`;
+    <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). <br><b>Our row is an ESTIMATE.</b> Our site shows guests one Rent line plus taxes; cleaning, admin and damage waiver are all inside that Rent. We split it back out with: cleaning shown + hidden per home (HK cleaning sheet, uploaded 2026-10-08; matches Track reservations), admin 8.3% and damage waiver 5% of base rent (Track fees #82 and #81, Display As = Rent, viewed 2026-10-08). Sources: Track booking-engine quotes from vacationrentalsparkcity.com; claude/reference/mm-fees-2026-10-08.md.</p>`;
 }
 function renderSiteFees() {
   // Average all-in per stay on each booking site: our homes vs Primary comps (stays we have prices for)
