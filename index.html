@@ -75,7 +75,7 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
   <div class="tabs" id="tabs"></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
-    <p class="small muted">Pick check-in, then check-out. The small number under each day is the Primary comp median per night (Airbnb, before taxes); red means 60%+ of comps are already blocked.</p>
+    <p class="small muted">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
     <div class="cal2" id="cal2"></div>
     <div id="results"></div>
   </div>
@@ -96,8 +96,8 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="newurl" type="url" placeholder="https://www.airbnb.com/rooms/..." style="flex:1;min-width:240px"><button class="tab on" id="addcomp">Add to this set</button></div>
     <p id="addmsg" class="small muted"></p>
     <div class="wrap"><table id="reqs"></table></div></div>
-  <div class="card"><h2>Stays — ours vs Primary comps</h2>
-    <p class="small muted">Airbnb = listing-page total for the stay, before taxes (PRE-TAX; same basis for ours and comps). Direct = all-in checkout total incl. taxes and fees. Click a row for every comp + source link.</p>
+  <div class="card"><h2>Our comps</h2>
+    <p class="small muted">Every comp in this set. Avg rate = all-in per night across the next 30 nights we have prices for (Airbnb incl. estimated tax). Blocked = Airbnb calendar, next 30 nights (ESTIMATE).</p>
     <div class="wrap"><table id="grid"></table></div></div>
 </main>
 <dialog id="dlg"><div id="dlgbody"></div><button class="tab" onclick="dlg.close()">Close</button></dialog>
@@ -110,7 +110,7 @@ const $ = id => document.getElementById(id);
 const fmt = n => n == null ? "—" : "$" + Math.round(n).toLocaleString();
 const pct = n => n == null ? "—" : (n > 0 ? "+" : "") + Math.round(n) + "%";
 const median = a => { a = a.filter(x => x != null).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
-const WIN = { we: "Fri–Sun", we3: "Fri–Mon", mw: "Sun–Wed" };
+const WIN = { we: "Fri–Sun", we3: "Fri–Mon", mw: "Sun–Wed", wd: "Wed–Fri" };
 let state = { sets: [], set: null, comps: [], checks: [], cal: [] };
 
 async function boot() {
@@ -272,12 +272,15 @@ function renderPicker() {
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
   if (!state.calMonth) { const d = new Date(); state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1, 12); }
   const pn = nightData();
-  const prim = state.comps.filter(c => c.tier === "Primary").map(c => c.id);
+  const prim = state.comps.filter(c => c.tier !== "Ours").map(c => c.id);
   const av = Object.fromEntries(prim.map(id => [id, availOf(id)]));
   const dayInfo = k => {
-    const vals = prim.map(id => pn[id]?.Airbnb?.[k]).filter(Boolean).map(a => a.reduce((x, y) => x + y, 0) / a.length);
+    // one all-in value per comp per night: average of its channels (Airbnb gets the estimated Summit County tax added)
+    const vals = prim.map(id => { const ch = pn[id] || {}; const v = [];
+      for (const [name, days] of Object.entries(ch)) if (days[k]) { const a = days[k].reduce((x, y) => x + y, 0) / days[k].length; v.push(name === "Airbnb" ? a * (1 + AIRBNB_TAX) : a); }
+      return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; }).filter(v => v != null);
     const bl = prim.map(id => av[id]?.(k)).filter(v => v != null);
-    return { med: vals.length >= 2 ? median(vals) : null, blocked: bl.length ? bl.filter(v => v === "0").length / bl.length : null };
+    return { med: vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null, n: vals.length, blocked: bl.length ? bl.filter(v => v === "0").length / bl.length : null };
   };
   const R = state.range || {};
   const month = (m0) => {
@@ -288,7 +291,7 @@ function renderPicker() {
       const k = iso(new Date(y, m, d, 12)), past = k < today, inf = past ? {} : dayInfo(k);
       const cls = ["day", past && "past", k === today && "today", R.ci && R.co && k > R.ci && k < R.co && "inr",
         k === R.ci && "start", (k === R.co || (k === R.ci && !R.co)) && "end", inf.blocked >= .6 && "hot"].filter(Boolean).join(" ");
-      h += `<button class="${cls}" data-k="${k}" ${past ? "disabled" : ""} title="${inf.med ? "Comp median " + fmt(inf.med) + "/night" : ""}${inf.blocked != null ? " · " + Math.round(inf.blocked * 100) + "% of comps blocked" : ""}"><span>${d}</span><small>${inf.med ? "$" + Math.round(inf.med) : "&nbsp;"}</small></button>`;
+      h += `<button class="${cls}" data-k="${k}" ${past ? "disabled" : ""} title="${inf.med ? "Avg comp rate " + fmt(inf.med) + "/night all-in (" + inf.n + " comps priced)" : "No comp prices for this night yet"}${inf.blocked != null ? " · " + Math.round(inf.blocked * 100) + "% of comps blocked" : ""}"><span>${d}</span><small>${inf.med ? "$" + Math.round(inf.med) : "&nbsp;"}</small></button>`;
     }
     return h + "</div>";
   };
@@ -380,13 +383,20 @@ function render() {
     $("fillaxis").innerHTML = `<span>${prim[0].start_date}</span><span>+60 nights</span><span>+120</span>`;
   } else { $("fill").innerHTML = `<p class="muted small">No calendar data yet.</p>`; $("fillaxis").innerHTML = ""; }
 
-  // Grid
-  $("grid").innerHTML = `<tr><th>Stay</th><th>Ours · Airbnb</th><th>vs median</th><th>Airbnb comps low</th><th>Airbnb median</th><th>high</th><th>#</th><th>VRBO median</th><th>Direct median (all-in)</th></tr>` +
-    S.map((s, i) => `<tr class="click" data-i="${i}"><td>${s.ci} → ${s.co} <span class="muted small">${WIN[s.w]}</span></td>
-      <td>${s.ourAb != null ? fmt(s.ourAb) : `<span class="muted">${s.ourStatus || "—"}</span>`}</td>
-      <td class="${s.gap >= 15 ? "up" : s.gap <= -15 ? "down" : ""}">${pct(s.gap)}</td>
-      <td>${s.nAb ? fmt(s.lowAb) : "—"}</td><td><b>${fmt(s.medAb)}</b></td><td>${s.nAb ? fmt(s.highAb) : "—"}</td><td>${s.nAb}</td><td>${s.nVr ? fmt(s.medVr) + ` <span class="muted small">(${s.nVr})</span>` : '<span class="muted small">not pulled yet</span>'}</td><td>${fmt(s.medDir)} <span class="muted small">(${s.nDir})</span></td></tr>`).join("");
-  $("grid").onclick = e => { const tr = e.target.closest("tr[data-i]"); if (tr) detail(S[+tr.dataset.i]); };
+  // Our comps list
+  const pnC = nightData(), today30 = []; for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
+  const ord = { Primary: 0, Secondary: 1 };
+  const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => ord[a.tier] - ord[b.tier] || a.label.localeCompare(b.label, undefined, { numeric: true }));
+  $("grid").innerHTML = `<tr><th>Comp</th><th>Property manager</th><th>Tier</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
+    comps.map(c => {
+      const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
+      const v = []; for (const [name, days] of Object.entries(pnC[c.id] || {})) for (const k of today30) if (days[k]) v.push(days[k].reduce((x, y) => x + y, 0) / days[k].length * (name === "Airbnb" ? 1 + AIRBNB_TAX : 1));
+      const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ");
+      return `<tr><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td><td>${c.host || '<span class="muted">unknown</span>'}</td><td>${c.tier}</td>
+        <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
+        <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
+        <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${c.notes || ""}</td></tr>`;
+    }).join("");
 }
 
 async function loadReqs() {
