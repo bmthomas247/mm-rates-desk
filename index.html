@@ -105,6 +105,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <p class="small muted">Listing total + 13.12% Summit County tax seen at Airbnb checkout (captured 2026-10-08).</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyAirbnb"></div>
+    <div id="siteFeesAirbnb"></div>
   </div>
   <div class="card" id="secDirect"><h2>Direct booking sites</h2>
     <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
@@ -112,14 +113,13 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyDirect"></div>
     <div id="directFees"></div>
+    <div id="siteFeesDirect"></div>
   </div>
   <div class="card" id="secVRBO"><h2>VRBO</h2>
     <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyVRBO"></div>
-  </div>
-  <div class="card" id="secSites"><h2>Booking sites compared</h2>
-    <div id="siteFees"></div>
+    <div id="siteFeesVRBO"></div>
   </div>
   <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
     <p class="small muted">Share of Primary comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
@@ -488,7 +488,7 @@ function renderDirectFees() {
     <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). <br><b>Our row is an ESTIMATE.</b> Our site shows guests one Rent line plus taxes; cleaning, admin and damage waiver are all inside that Rent. We split it back out with: cleaning shown + hidden per home (HK cleaning sheet, uploaded 2026-10-08; matches Track reservations), admin 8.3% and damage waiver 5% of base rent (Track fees #82 and #81, Display As = Rent, viewed 2026-10-08). Sources: Track booking-engine quotes from vacationrentalsparkcity.com; claude/reference/mm-fees-2026-10-08.md.</p>`;
 }
 function renderSiteFees() {
-  // Average all-in per stay on each booking site: our homes vs Primary comps (stays we have prices for)
+  // Average all-in per night on each booking site: our homes vs Primary comps. Shown at the bottom of that site's section.
   const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
   const sites = ["Airbnb", "Direct", "VRBO"].map(ch => {
     const ok = state.checks.filter(r => r.channel === ch && r.status === "available" && r.total);
@@ -500,17 +500,16 @@ function renderSiteFees() {
   });
   const max = Math.max(...sites.flatMap(x => [x.o || 0, x.c || 0])) || 1;
   const bar = (v, col) => v ? `<div class="sbt"><span style="width:${v / max * 100}%;background:${col}"></span></div>` : '<div class="muted small">no prices yet</div>';
-  $("siteFees").innerHTML = `<p class="small muted">Average all-in price per night on each booking site: our homes vs Primary comps.</p>
-    <div class="legend"><span><i style="background:var(--teal);height:10px"></i>Ours</span><span><i style="background:var(--ink);height:10px"></i>Primary comps</span></div>` +
-    sites.map(x => `<div style="margin:10px 0"><b>${x.ch}</b>
+  for (const x of sites) {
+    const g = x.o && x.c ? (x.o / x.c - 1) * 100 : null;
+    const fee = v => x.ch === "Airbnb" ? '<span class="muted small">in the total</span>' : v != null ? fmt(v) : "—";
+    $("siteFees" + x.ch).innerHTML = `<h3 class="chh">${x.ch} averages <span class="small muted">all-in price per night · ${x.no} of our stays · ${x.nc} comp stays</span></h3>
       <div class="sbar"><div class="sbl">Ours</div>${bar(x.o, "var(--teal)")}<div class="sbv">${fmt(x.o)}</div></div>
-      <div class="sbar"><div class="sbl">Primary comps</div>${bar(x.c, "var(--ink)")}<div class="sbv">${fmt(x.c)}</div></div></div>`).join("") +
-    `<div class="wrap"><table><tr><th>Booking site</th><th>Ours / night</th><th>Comps / night</th><th>Difference</th><th>Fees shown at checkout (ours)</th><th>Fees shown at checkout (comps)</th></tr>` +
-    sites.map(x => { const g = x.o && x.c ? (x.o / x.c - 1) * 100 : null;
-      return `<tr><td><b>${x.ch}</b><br><span class="muted small">${x.no} of our stays · ${x.nc} comp stays</span></td><td>${fmt(x.o)}</td><td>${fmt(x.c)}</td>
-        <td class="${g != null && Math.abs(g) >= 15 ? "up" : ""}">${pct(g)}</td>
-        <td>${x.ch === "Airbnb" ? '<span class="muted small">in the total</span>' : x.oFee != null ? fmt(x.oFee) : "—"}</td><td>${x.ch === "Airbnb" ? '<span class="muted small">in the total</span>' : x.cFee != null ? fmt(x.cFee) : "—"}</td></tr>`; }).join("") +
-    `</table></div><p class="small muted">All-in = what the guest pays per night including cleaning, fees and taxes (Airbnb adds the estimated 13.12% tax). Airbnb shows one total, so its fees can't be split out. VRBO fills in once KeyData exports are connected.</p>`;
+      <div class="sbar"><div class="sbl">Primary comps</div>${bar(x.c, "var(--ink)")}<div class="sbv">${fmt(x.c)}</div></div>
+      <div class="wrap"><table><tr><th>Ours / night</th><th>Comps / night</th><th>Difference</th><th>Fees shown at checkout (ours)</th><th>Fees shown at checkout (comps)</th></tr>
+      <tr><td>${fmt(x.o)}</td><td>${fmt(x.c)}</td><td class="${g != null && Math.abs(g) >= 15 ? "up" : ""}">${pct(g)}</td><td>${fee(x.oFee)}</td><td>${fee(x.cFee)}</td></tr></table></div>
+      <p class="small muted">All-in = what the guest pays per night including cleaning, fees and taxes${x.ch === "Airbnb" ? " (adds the estimated 13.12% tax; Airbnb shows one total, so its fees can't be split out)" : ""}.${x.ch === "VRBO" ? " Fills in once KeyData exports are connected." : ""}</p>`;
+  }
 }
 function render() {
   renderPicker();
