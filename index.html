@@ -41,6 +41,8 @@ a{color:var(--teal2)}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
+dialog{max-height:90vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlgx{position:sticky;top:0;float:right;z-index:2;width:34px;height:34px;font-size:20px;background:var(--card)}
 .dchart{position:relative}.dchart svg{width:100%;height:auto;display:block}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-bottom:6px}.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
 .tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap}
@@ -101,14 +103,14 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
   <div class="card" id="ours"></div>
   <div id="flags" class="hidden"></div>
   <div class="card" id="secAirbnb"><h2>Airbnb <span class="pill">ESTIMATE</span></h2>
-    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
+    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), <b class="scopeLbl">next 180 nights</b>. Hover any night. Dots are nights we have a price for; lines connect them.</p>
     <p class="small muted">Listing total + 13.12% Summit County tax seen at Airbnb checkout (captured 2026-10-08).</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyAirbnb"></div>
     <div id="siteFeesAirbnb"></div>
   </div>
   <div class="card" id="secDirect"><h2>Direct booking sites</h2>
-    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
+    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), <b class="scopeLbl">next 180 nights</b>. Hover any night. Dots are nights we have a price for; lines connect them.</p>
     <p class="small muted">Each manager's own site: checkout total incl. taxes and fees.</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyDirect"></div>
@@ -116,16 +118,16 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div id="siteFeesDirect"></div>
   </div>
   <div class="card" id="secVRBO"><h2>VRBO</h2>
-    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
+    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), <b class="scopeLbl">next 180 nights</b>. Hover any night. Dots are nights we have a price for; lines connect them.</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyVRBO"></div>
     <div id="siteFeesVRBO"></div>
   </div>
   <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
-    <p class="small muted">Share of Primary comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
+    <p class="small muted">Share of comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
     <div class="chart" id="fill"></div><div class="axis" id="fillaxis"></div></div>
   <div class="card"><h2>Add a comp</h2>
-    <p class="small muted">Paste an Airbnb, VRBO or direct-booking link. The ThinkStation reads it within about 30 minutes (manager, beds, sleeps, and the same home's other links when the page shows them). Then approve it as Primary or Secondary.</p>
+    <p class="small muted">Paste an Airbnb, VRBO or direct-booking link. The ThinkStation reads it within about 30 minutes (manager, beds, sleeps, and the same home's other links when the page shows them). Then add it to the comps.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="newurl" type="url" placeholder="https://www.airbnb.com/rooms/..." style="flex:1;min-width:240px"><button class="tab on" id="addcomp">Add to this set</button></div>
     <p id="addmsg" class="small muted"></p>
     <div class="wrap"><table id="reqs"></table></div></div>
@@ -150,7 +152,14 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
   apply();
 })();
 </script>
-<dialog id="dlg"><div id="dlgbody"></div><button class="tab" onclick="dlg.close()">Close</button></dialog>
+<dialog id="dlg"><button class="xbtn dlgx" id="dlgx" aria-label="Close" title="Close">×</button><div id="dlgbody"></div><button class="tab" id="dlgclose">Close</button></dialog>
+<script>
+// Close the pop-up: × button, Close button, Esc, or click outside it.
+(() => { const d = document.getElementById("dlg"), c = () => d.close();
+  document.getElementById("dlgx").onclick = c; document.getElementById("dlgclose").onclick = c;
+  d.addEventListener("click", e => { const r = d.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) c(); });
+})();
+</script>
 
 <script>
 const SUPABASE_URL = "https://ohkndupfdgrrrdtyjzfv.supabase.co";
@@ -187,7 +196,9 @@ async function load(setId) {
     sb.from("comps").select("*,comp_links(*)").eq("set_id", setId).eq("active", true),
     sb.from("latest_checks").select("*").eq("set_id", setId).gte("check_in", today).order("check_in").limit(5000),
     sb.from("latest_calendar").select("*").eq("set_id", setId)]);
-  state.comps = c.data || []; state.checks = k.data || []; state.cal = cal.data || [];
+  // One comp set: every comp that's been added counts the same (no Primary/Secondary split; Brandon 2026-10-09).
+  const one = r => r.tier === "Ours" ? r : { ...r, tier: "Primary" };
+  state.comps = (c.data || []).map(one); state.allChecks = state.checks = (k.data || []).map(one); state.cal = (cal.data || []).map(one);
   render(); loadReqs();
 }
 
@@ -209,15 +220,30 @@ function stays() {
   }).sort((a, b) => a.ci.localeCompare(b.ci) || a.w.localeCompare(b.w));
 }
 
+let blkRange = null;
+// Address first; the listing title goes underneath. Unknown units say so (never guessed).
+function addrCell(c) {
+  // Complete = has a unit (#) or is a single home with a street number; a condo building or complex name without a unit is not.
+  const a = c.address && (/#|\bunit\b/i.test(c.address) || (/^\d+\s/.test(c.address) && !/lillehammer|oslo|luge/i.test(c.address))) ? c.address : null;
+  const top = a ? `<b>${a}</b>` : c.address ? `<b>${c.address}</b> <span class="muted small">· unit unknown</span>` : `<b class="muted">Address unknown</b>`;
+  return `${top}<br><span class="muted small">${c.label}</span>`;
+}
+function rangeNights() { const R = state.range; if (!R?.co) return null; const a = []; for (let k = R.ci; k < R.co; k = addD(k, 1)) a.push(k); return a; }
 function renderOurs(S) {
   const ours = state.comps.filter(c => c.tier === "Ours").sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   const nComps = state.comps.filter(c => c.tier !== "Ours");
-  let h = `<h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.filter(c => c.tier === "Primary").length} Primary comps · ${nComps.filter(c => c.tier === "Secondary").length} Secondary)</span></h2>`;
+  let h = `<h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.length} comps)</span></h2>`;
   if (!ours.length) { $("ours").innerHTML = h + `<p class="muted">None of our homes are in this set yet.</p>`; return; }
-  h += `<div class="wrap"><table><tr><th>Home</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>Blocked 30 / 60 / 90 nights<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
+  h += `<div class="wrap"><table><tr><th>Home</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>${rangeNights() ? "Blocked on your dates" : "Blocked 30 / 60 / 90 nights"}<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
   const blk = (cal, n) => { if (!cal) return null; const off = Math.round((new Date().setHours(12,0,0,0) - new Date(cal.start_date + "T12:00:00")) / 864e5); const a = cal.avail.slice(off, off + n); return a.length ? a.split("").filter(v => v === "0").length / a.length * 100 : null; };
   const compCals = state.cal.filter(x => x.tier === "Primary");
   const compBlk = n => { const v = compCals.map(c => blk(c, n)).filter(x => x != null); return v.length ? median(v) : null; };
+  const RN = rangeNights();
+  if (RN) { // dates picked: blocked % over exactly those nights
+    const over = cal => { if (!cal) return null; const a = availOf(cal.comp_id); const v = RN.map(a).filter(x => x != null); return v.length ? v.filter(x => x === "0").length / v.length * 100 : null; };
+    const cr = (() => { const v = compCals.map(over).filter(x => x != null); return v.length ? median(v) : null; })();
+    blkRange = { over, cr };
+  } else blkRange = null;
   const pc = v => v == null ? '<span class="muted" title="No Airbnb calendar pulled for this home yet">—</span>' : Math.round(v) + "%";
   const cb = { 30: compBlk(30), 60: compBlk(60), 90: compBlk(90) };
   for (const c of ours) {
@@ -230,7 +256,7 @@ function renderOurs(S) {
     h += `<tr class="click" data-home="${c.id}" title="Click for where this home stands and what to list at"><td><b style="color:var(--teal2)">${c.label}</b> <span class="small" style="color:var(--teal2)">›</span><br><span class="muted small">${c.address || ""}</span></td>
       <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td>
       <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>") : '<span class="muted">no listing linked yet</span>'}</td>
-      <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
+      <td>${blkRange ? (() => { const o = blkRange.over(cal), d = o != null && blkRange.cr != null ? o - blkRange.cr : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(blkRange.cr)}</span>`; })() : [30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
       <td>${c.gross_rent_ytd != null ? `<b>${fmt(c.gross_rent_ytd)}</b><br><span class="muted small">${c.booked_nights_ytd} nights</span>` : "—"}</td>
       <td>${c.last_booked_at ? new Date(c.last_booked_at).toLocaleDateString() + `<br><span class="${(Date.now() - new Date(c.last_booked_at)) / 864e5 > 30 ? "up" : "muted"} small">${Math.round((Date.now() - new Date(c.last_booked_at)) / 864e5)} days ago</span>` : '<span class="muted">none this year</span>'}</td></tr>`;
   }
@@ -243,7 +269,7 @@ function renderOurs(S) {
     h += `<tr class="avgrow"><td><b style="color:var(--teal2)">Moose Management average</b><br><span class="muted small">${ours.length} home${ours.length > 1 ? "s" : ""}${ours.length - withRev.length ? ` · ${ours.length - withRev.length} with no bookings this year left out of revenue` : ""}</span></td>
       <td>${[c => c.bedrooms, c => c.baths, c => c.sleeps].map(f => { const v = avgOf(ours, c => f(c) == null ? null : +f(c)); return v == null ? "—" : (Math.round(v * 10) / 10); }).join(" / ")}<br><span class="muted small">avg</span></td>
       <td>${["Airbnb", "VRBO", "Direct"].map(ch => `${ours.filter(c => (c.comp_links || []).some(l => l.active && l.channel === ch)).length} of ${ours.length} on ${ch}`).join("<br>")}</td>
-      <td>${[30, 60, 90].map(n => { const o = avgBlk(n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
+      <td>${blkRange ? (() => { const o = avgOf(ours, c => blkRange.over(state.cal.find(x => x.comp_id === c.id))), d = o != null && blkRange.cr != null ? o - blkRange.cr : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(blkRange.cr)}</span>`; })() : [30, 60, 90].map(n => { const o = avgBlk(n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
       <td><b>${fmt(avgOf(withRev, c => +c.gross_rent_ytd))}</b><br><span class="muted small">${Math.round(avgOf(withRev, c => c.booked_nights_ytd) || 0)} nights avg</span></td>
       <td>${avgDays != null ? `<span class="${avgDays > 30 ? "up" : ""}">${Math.round(avgDays)} days ago</span><br><span class="muted small">avg last booking</span>` : "—"}</td></tr>`;
   }
@@ -267,9 +293,10 @@ function renderDaily(ch) {
       if (r.tier === "Ours") n.ours.push(pn); else (n.comps[r.comp_id] ||= []).push(pn);
     }
   }
-  const start = new Date(); start.setHours(12, 0, 0, 0);
+  const RN = rangeNights(), N = RN ? RN.length : 180, M = Math.max(N - 1, 1);
+  const start = RN ? new Date(RN[0] + "T12:00:00") : new Date(new Date().setHours(12, 0, 0, 0));
   const pts = [];
-  for (let i = 0; i < 180; i++) {
+  for (let i = 0; i < N; i++) {
     const d = new Date(start); d.setDate(d.getDate() + i); const k = iso(d); const n = nights[k];
     const comp = n ? Object.values(n.comps).map(v => v.reduce((a, b) => a + b, 0) / v.length) : [];
     pts.push({ k, d, ours: n?.ours.length ? n.ours.reduce((a, b) => a + b, 0) / n.ours.length : null,
@@ -281,14 +308,14 @@ function renderDaily(ch) {
   const W = 1000, H = 260, L = 52, R = 12, T = 12, B = 34;
   const maxV = Math.max(...pts.flatMap(p => [p.ours, p.med, p.p75]).filter(v => v != null)) * 1.1;
   const step = maxV > 1500 ? 500 : maxV > 600 ? 200 : 100, top = Math.ceil(maxV / step) * step;
-  const x = i => L + (W - L - R) * i / 179, y = v => T + (H - T - B) * (1 - v / top);
+  const x = i => L + (W - L - R) * (N === 1 ? 0.5 : i / M), y = v => T + (H - T - B) * (1 - v / top);
   // Connected: one line through every night that has a value (gaps are bridged)
   const line = key => { const p = pts.map((q, i) => q[key] != null ? [x(i), y(q[key])] : null).filter(Boolean); return p.length ? "M" + p.map(c => c[0].toFixed(1) + "," + c[1].toFixed(1)).join("L") : ""; };
   let g = "";
   for (let v = 0; v <= top; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">$${v.toLocaleString()}</text>`;
   pts.forEach((p, i) => {
-    if (p.d.getDate() === 1 || i === 0) g += `<text x="${x(i)}" y="${H - 12}" font-size="11" fill="var(--muted)" text-anchor="${i === 0 ? "start" : "middle"}">${p.d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text>`;
-    if (p.d.getDay() === 5 || p.d.getDay() === 6) g += `<rect x="${x(i) - 2}" y="${T}" width="${(W - L - R) / 179}" height="${H - T - B}" fill="var(--tealbg)" opacity=".45"/>`;
+    if (p.d.getDate() === 1 || i === 0 || (N <= 31 && N > 1)) g += `<text x="${x(i)}" y="${H - 12}" font-size="11" fill="var(--muted)" text-anchor="${i === 0 ? "start" : "middle"}">${p.d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text>`;
+    if (p.d.getDay() === 5 || p.d.getDay() === 6) g += `<rect x="${x(i) - 2}" y="${T}" width="${(W - L - R) / M}" height="${H - T - B}" fill="var(--tealbg)" opacity=".45"/>`;
   });
   const bandPts = pts.map((p, i) => p.p25 != null ? { i, ...p } : null).filter(Boolean);
   const band = bandPts.length > 1 ? `<path d="M${bandPts.map(p => x(p.i) + "," + y(p.p75)).join("L")}L${bandPts.slice().reverse().map(p => x(p.i) + "," + y(p.p25)).join("L")}Z" fill="var(--line)" opacity=".9"/>` : "";
@@ -305,7 +332,7 @@ function renderDaily(ch) {
   const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh"), hit = el.querySelector(".hit");
   hit.onmousemove = e => {
     const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) / r.width * W;
-    const i = Math.max(0, Math.min(179, Math.round((sx - L) / (W - L - R) * 179))), p = pts[i];
+    const i = Math.max(0, Math.min(N - 1, Math.round((sx - L) / (W - L - R) * M))), p = pts[i];
     xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.style.display = "";
     const gap = p.ours != null && p.med ? Math.round((p.ours / p.med - 1) * 100) : null;
     tip.innerHTML = `<b>${ch} · ${p.d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b><br>Ours: ${fmt(p.ours)}${gap != null ? ` <span class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">(${gap > 0 ? "+" : ""}${gap}%)</span>` : ""}<br>Comp high: ${fmt(p.p75)}<br>Comp average: ${fmt(p.med)}<br>Comp low: ${fmt(p.p25)}<br><span class="muted">${p.n} comps priced · all-in per night</span>`;
@@ -440,7 +467,7 @@ function homeDetail(homeId) {
       <td>${fmt(r.ch.Airbnb.ours ?? r.ch.Direct.ours)}${r.now ? `<br><span class="muted small">≈ ${fmt(r.now)} rent</span>` : ""}</td><td class="${r.gap >= 10 ? "up" : r.gap <= -15 ? "down" : ""}">${pct(r.gap)}</td>
       <td>${cell(r.ch.Airbnb)}</td><td>${cell(r.ch.Direct)}</td>
       <td>${r.myBlk == null ? "—" : Math.round(r.myBlk) + "%"} / ${r.compBlk == null ? "—" : Math.round(r.compBlk) + "%"}</td></tr>`).join("") + `</table></div>
-    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the Primary comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, admin 8.3% + damage waiver 5%, Airbnb recovery 21.65% (Track fees, 2026-10-08), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
+    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, admin 8.3% + damage waiver 5%, Airbnb recovery 21.65% (Track fees, 2026-10-08), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
     <p class="small muted">Sources: comp prices = latest pulls in this Rates Desk (Airbnb listing/checkout pages and manager direct checkouts, each with its link in "Search a stay"); calendars = Airbnb; revenue and last booking = Track (read-only).</p>`;
   $("dlg").showModal();
 }
@@ -556,12 +583,12 @@ function renderResults(pn) {
   const S = stays().filter(st => st.ci < R.co && st.co > R.ci);
   $("results").innerHTML = `<div style="margin-top:12px">${flagHtml(S)}</div><div class="tiles">
       <div class="tile"><span>Our Airbnb (median)</span><b>${fmt(median(ourAb))}</b></div>
-      <div class="tile"><span>Primary comps Airbnb median</span><b>${fmt(median(compAb))}</b><span>${compAb.length} priced</span></div>
+      <div class="tile"><span>Comps Airbnb median</span><b>${fmt(median(compAb))}</b><span>${compAb.length} priced</span></div>
       <div class="tile"><span>Ours vs comps</span><b class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">${pct(gap)}</b></div>
-      <div class="tile"><span>Primary comps blocked</span><b>${blockedPct == null ? "—" : Math.round(blockedPct) + "%"}</b><span>ESTIMATE</span></div>
+      <div class="tile"><span>Comps blocked</span><b>${blockedPct == null ? "—" : Math.round(blockedPct) + "%"}</b><span>ESTIMATE</span></div>
       <div class="tile"><span>Our homes open</span><b>${oursRows.length ? oursRows.filter(r => r.st === "open").length + " of " + oursRows.length : "—"}</b></div></div>
-    <div class="wrap"><table id="restable"><tr><th>Home</th>${th("host", "Property manager")}<th>Tier</th><th>Calendar</th>${th("Airbnb", "Airbnb")}${th("VRBO", "VRBO")}${th("Direct", "Direct")}</tr>` +
-    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td><b>${r.c.label}</b></td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.c.tier}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb, "Airbnb", r.c.tier === "Ours")}</td><td>${cell(r.q.VRBO, "VRBO", r.c.tier === "Ours")}</td><td>${cell(r.q.Direct, "Direct", r.c.tier === "Ours")}</td></tr>`).join("") +
+    <div class="wrap"><table id="restable"><tr><th>Home</th>${th("host", "Property manager")}<th>Calendar</th>${th("Airbnb", "Airbnb")}${th("VRBO", "VRBO")}${th("Direct", "Direct")}</tr>` +
+    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td>${r.c.tier === "Ours" ? `<b>${r.c.label}</b>` : addrCell(r.c)}</td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb, "Airbnb", r.c.tier === "Ours")}</td><td>${cell(r.q.VRBO, "VRBO", r.c.tier === "Ours")}</td><td>${cell(r.q.Direct, "Direct", r.c.tier === "Ours")}</td></tr>`).join("") +
     `</table></div><p class="small muted">Exact = we pulled this exact stay (click the price for its source page). ESTIMATE = built from the nightly prices of pulled stays that cover these nights. Calendar from Airbnb (blocked ≠ booked).</p>`;
   $("restable").onclick = e => { const h = e.target.closest("th[data-sort]"); if (!h) return;
     const k = h.dataset.sort; state.sort = { key: k, dir: sk.key === k ? -sk.dir : 1 }; renderResults(pn); };
@@ -571,11 +598,16 @@ function flagLists(S) {
   return { red: S.filter(s => s.gap != null && s.gap >= 15 && s.nAb >= 3), low: S.filter(s => s.gap != null && s.gap <= -15 && s.nAb >= 3) };
 }
 function flagHtml(S) {
+  // Flags in per-night terms so the change can be typed straight into Beyond / Track.
+  // gap per night = (our Airbnb stay total − comp median stay total) ÷ nights (both pre-tax listing totals; cleaning cancels out).
+  // Nightly rate change = that gap ÷ (1 + our fees hidden in rent on Airbnb: admin 8.3% + damage 5% + recovery 21.65%). ESTIMATE.
   const { red, low } = flagLists(S);
   const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const n = s => Math.round((new Date(s.co) - new Date(s.ci)) / 864e5);
-  let h = red.map(s => `<div class="flag red"><strong>🔴 ${fd(s.ci)} – ${fd(s.co)}</strong> We're <b>${fmt(s.ourAb - s.medAb)} more</b> than similar homes for this ${n(s)}-night stay (${fmt(s.ourAb)} vs ${fmt(s.medAb)}). Lower it by about ${fmt(s.ourAb - s.medAb)} to match. <span class="muted small">Compared with ${s.nAb} similar homes on Airbnb.</span></div>`).join("");
-  h += low.map(s => `<div class="flag amb"><strong>🟡 ${fd(s.ci)} – ${fd(s.co)}</strong> We're <b>${fmt(s.medAb - s.ourAb)} cheaper</b> than similar homes for this ${n(s)}-night stay (${fmt(s.ourAb)} vs ${fmt(s.medAb)}). We could raise it by about ${fmt(s.medAb - s.ourAb)}. <span class="muted small">Compared with ${s.nAb} similar homes on Airbnb.</span></div>`).join("");
+  const AB_LOAD = 0.083 + 0.05 + 0.2165;
+  const per = s => Math.abs(s.ourAb - s.medAb) / n(s), rate = s => Math.round(per(s) / (1 + AB_LOAD) / 5) * 5;
+  const line = (s, hi) => `<div class="flag ${hi ? "red" : "amb"}"><strong>${hi ? "🔴" : "🟡"} ${fd(s.ci)} – ${fd(s.co)}</strong> ${hi ? "Lower" : "Raise"} the nightly rate by about <b>${fmt(rate(s))}/night</b>. We're ${fmt(per(s))}/night ${hi ? "above" : "below"} similar homes on Airbnb (${fmt(s.ourAb / n(s))} vs ${fmt(s.medAb / n(s))} per night, ${n(s)}-night stay). <span class="muted small">Nightly rate change backs out our hidden fees (ESTIMATE). Compared with ${s.nAb} similar homes.</span></div>`;
+  const h = red.map(s => line(s, true)).join("") + low.map(s => line(s, false)).join("");
   return h || `<div class="flag ok"><strong>✓ Priced right</strong> We're within 15% of similar homes for these dates.</div>`;
 }
 function renderDirectFees() {
@@ -637,14 +669,19 @@ function renderSiteFees() {
     const fee = v => x.ch === "Airbnb" ? '<span class="muted small">in the total</span>' : v != null ? fmt(v) : "—";
     $("siteFees" + x.ch).innerHTML = `<h3 class="chh">${x.ch} averages <span class="small muted">all-in price per night · ${x.no} of our stays · ${x.nc} comp stays</span></h3>
       <div class="sbar"><div class="sbl">Ours</div>${bar(x.o, "var(--teal)")}<div class="sbv">${fmt(x.o)}</div></div>
-      <div class="sbar"><div class="sbl">Primary comps</div>${bar(x.c, "var(--ink)")}<div class="sbv">${fmt(x.c)}</div></div>
+      <div class="sbar"><div class="sbl">Comps</div>${bar(x.c, "var(--ink)")}<div class="sbv">${fmt(x.c)}</div></div>
       <div class="wrap"><table><tr><th>Ours / night</th><th>Comps / night</th><th>Difference</th><th>Fees shown at checkout (ours)</th><th>Fees shown at checkout (comps)</th></tr>
       <tr><td>${fmt(x.o)}</td><td>${fmt(x.c)}</td><td class="${g != null && Math.abs(g) >= 15 ? "up" : ""}">${pct(g)}</td><td>${fee(x.oFee)}</td><td>${fee(x.cFee)}</td></tr></table></div>
       <p class="small muted">All-in = what the guest pays per night including cleaning, fees and taxes${x.ch === "Airbnb" ? " (adds the estimated 13.12% tax; Airbnb shows one total, so its fees can't be split out)" : ""}.${x.ch === "VRBO" ? " Fills in once KeyData exports are connected." : ""}</p>`;
   }
 }
 function render() {
+  state.checks = state.allChecks || state.checks;
   renderPicker();
+  // The picked dates drive the rest of the page: keep only stays that overlap them.
+  const RN0 = rangeNights();
+  if (RN0) state.checks = state.allChecks.filter(r => r.check_in < state.range.co && r.check_out > state.range.ci);
+  document.querySelectorAll(".scopeLbl").forEach(e => e.textContent = RN0 ? `${RN0[0]} → ${state.range.co} (${RN0.length} night${RN0.length > 1 ? "s" : ""})` : "next 180 nights");
   const S = stays().filter(st => !state.range?.co || (st.ci < state.range.co && st.co > state.range.ci));
   renderOurs(S);
   renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO"); renderDirectFees(); renderSiteFees();
@@ -666,20 +703,20 @@ function render() {
   } else { $("fill").innerHTML = `<p class="muted small">No calendar data yet.</p>`; $("fillaxis").innerHTML = ""; }
 
   // Our comps list
-  const pnC = nightData(), today30 = []; for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
-  const ord = { Primary: 0, Secondary: 1 };
-  const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => ord[a.tier] - ord[b.tier] || a.label.localeCompare(b.label, undefined, { numeric: true }));
-  $("compCount").textContent = `(${comps.length} total · ${comps.filter(c => c.tier === "Primary").length} Primary · ${comps.filter(c => c.tier === "Secondary").length} Secondary)`;
-  $("grid").innerHTML = `<tr><th></th><th>Comp</th><th>Property manager</th><th>Tier</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
+  const pnC = nightData(), today30 = rangeNights() || []; if (!today30.length) for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
+  const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => (a.address || "~" + a.label).localeCompare(b.address || "~" + b.label, undefined, { numeric: true }));
+  $("compCount").textContent = `(${comps.length} total)`;
+  $("grid").innerHTML = `<tr><th></th><th>Address</th><th>Property manager</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>${rangeNights() ? "Blocked on your dates" : "Blocked next 30"}</th><th>Avg rate / night</th><th>Notes</th></tr>` +
     comps.map(c => {
       const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
       const v = []; for (const [name, days] of Object.entries(pnC[c.id] || {})) for (const k of today30) if (days[k]) v.push(days[k].reduce((x, y) => x + y, 0) / days[k].length * (name === "Airbnb" ? 1 + AIRBNB_TAX : 1));
       const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>");
-      return `<tr><td><button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button></td><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td><td>${c.host || '<span class="muted">unknown</span>'}</td><td>${c.tier}</td>
+      return `<tr><td><button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button></td><td>${addrCell(c)}</td><td>${c.host || '<span class="muted">unknown</span>'}</td>
         <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
         <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
         <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${c.notes || ""}</td></tr>`;
     }).join("");
+  state.checks = state.allChecks || state.checks;
   $("grid").onclick = async e => {
     const b = e.target.closest("button[data-rm]"); if (!b) return;
     const c = state.comps.find(x => x.id === b.dataset.rm);
@@ -697,11 +734,11 @@ async function loadReqs() {
       <td>${r.status === "pending" ? "waiting for ThinkStation" : esc(r.status)}</td><td>${esc(i.title || i.error || "")}</td><td>${esc(i.manager)}</td>
       <td>${esc(i.bedrooms || "—")} / ${esc(i.sleeps || "—")}</td>
       <td>${(i.links || []).map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.channel)}</a>`).join(" · ")}</td>
-      <td><button class="tab" data-r="${r.id}" data-d="Primary">Primary</button> <button class="tab" data-r="${r.id}" data-d="Secondary">Secondary</button> <button class="tab" data-r="${r.id}" data-d="reject">Reject</button></td></tr>`; }).join("");
+      <td><button class="tab" data-r="${r.id}" data-d="Primary">Add to comps</button> <button class="tab" data-r="${r.id}" data-d="reject">Reject</button></td></tr>`; }).join("");
 }
 $("reqs").onclick = async e => {
   const b = e.target.closest("button[data-r]"); if (!b) return;
-  if (b.dataset.d !== "reject" && !confirm(`Add this home to the comp set as ${b.dataset.d}?`)) return;
+  if (b.dataset.d !== "reject" && !confirm(`Add this home to the comp set?`)) return;
   const { error } = await sb.rpc("decide_comp_request", { req_id: +b.dataset.r, decision: b.dataset.d });
   if (error) alert(error.message); else load(state.set.id);
 };
@@ -724,8 +761,8 @@ function detail(s) {
     : `<a href="${r.url}" target="_blank" rel="noopener"><b>${fmt(r.total)}</b></a>${r.pre_tax ? ' <span class="pill">PRE-TAX</span>' : ""}<br><span class="muted small">${fmt(r.total / r.nights)}/night${r.cleaning ? " · clean " + fmt(r.cleaning) : ""}${r.crossed_out ? ` · <s>${fmt(r.crossed_out)}</s> ${r.discount_pct}%` : ""}${r.deal_label ? " · " + r.deal_label : ""}</span>`;
   $("dlgbody").innerHTML = `<h2>${s.ci} → ${s.co} · ${WIN[s.w]} · 2 guests</h2>
    <p class="small muted">Airbnb = listing total before taxes. Direct = full checkout incl. taxes and fees. VRBO isn't pulled automatically yet. Click a price for its source page. Captured ${new Date(s.rows[0].captured_at).toLocaleString()}.</p>
-   <div class="wrap"><table><tr><th>Home</th><th>Property manager</th><th>Tier</th><th>Airbnb</th><th>VRBO</th><th>Direct</th></tr>` +
-   homes.map(h => `<tr><td><b>${h.r0.label}</b></td><td>${h.c.host || '<span class="muted">unknown</span>'}</td><td>${h.r0.tier}</td><td>${cell(h.ch.Airbnb)}</td><td>${cell(h.ch.VRBO)}</td><td>${cell(h.ch.Direct)}</td></tr>`).join("") + `</table></div>`;
+   <div class="wrap"><table><tr><th>Home</th><th>Property manager</th><th>Airbnb</th><th>VRBO</th><th>Direct</th></tr>` +
+   homes.map(h => `<tr><td><b>${h.r0.label}</b></td><td>${h.c.host || '<span class="muted">unknown</span>'}</td><td>${cell(h.ch.Airbnb)}</td><td>${cell(h.ch.VRBO)}</td><td>${cell(h.ch.Direct)}</td></tr>`).join("") + `</table></div>`;
   $("dlg").showModal();
 }
 
