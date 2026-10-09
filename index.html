@@ -59,6 +59,7 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 .day.hot small{color:var(--red);font-weight:600}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0}
 .tile{border:1px solid var(--line);border-radius:10px;padding:10px 12px}.tile b{display:block;font-size:20px}.tile span{font-size:12px;color:var(--muted)}
+.chh{font-size:14px;margin:16px 0 6px}
 </style>
 </head>
 <body>
@@ -73,17 +74,20 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 <main id="app" class="hidden">
   <div class="tabs" id="tabs"></div>
   <div class="card" id="search">
-    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><button class="tab" id="clearRange">Clear dates</button></div>
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
     <p class="small muted">Pick check-in, then check-out. The small number under each day is the Primary comp median per night (Airbnb, before taxes); red means 60%+ of comps are already blocked.</p>
     <div class="cal2" id="cal2"></div>
     <div id="results"></div>
   </div>
   <div class="card" id="ours"></div>
   <div class="card" id="flags"></div>
-  <div class="card"><h2>Daily pricing — next 120 nights</h2>
-    <p class="small muted">Price per night from each stay's Airbnb total before taxes (cleaning and fees spread across the nights). Hover any night.</p>
+  <div class="card"><h2>Daily all-in pricing — next 120 nights</h2>
+    <p class="small muted">Price per night for the whole stay (cleaning, fees and taxes spread across the nights). Hover any night. Dots are nights we have a price for; lines connect them.</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--ink)"></i>Primary comp median</span><span><i style="background:var(--line);height:10px"></i>Comp middle half (25th–75th)</span></div>
-    <div class="dchart" id="daily"></div></div>
+    <h3 class="chh">Airbnb <span class="pill">ESTIMATE</span> <span class="small muted">listing total + 13.12% Summit County tax seen at Airbnb checkout (captured 2026-10-08)</span></h3><div class="dchart" id="dailyAirbnb"></div>
+    <h3 class="chh">Direct <span class="small muted">checkout total incl. taxes and fees</span></h3><div class="dchart" id="dailyDirect"></div>
+    <h3 class="chh">VRBO</h3><div class="dchart" id="dailyVRBO"></div>
+  </div>
   <div class="card"><h2>Comp calendar fill — next 120 nights <span class="pill">ESTIMATE</span></h2>
     <p class="small muted">Share of Primary comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
     <div class="chart" id="fill"></div><div class="axis" id="fillaxis"></div></div>
@@ -160,7 +164,7 @@ function renderOurs(S) {
   const nComps = state.comps.filter(c => c.tier !== "Ours");
   let h = `<h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.filter(c => c.tier === "Primary").length} Primary comps · ${nComps.filter(c => c.tier === "Secondary").length} Secondary)</span></h2>`;
   if (!ours.length) { $("ours").innerHTML = h + `<p class="muted">None of our homes are in this set yet.</p>`; return; }
-  h += `<div class="wrap"><table><tr><th>Home</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked 30 / 60 / 90 nights<br><span class="muted small">ours vs comp median</span></th><th>Open stays priced</th><th>vs Primary median</th></tr>`;
+  h += `<div class="wrap"><table><tr><th>Home</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked 30 / 60 / 90 nights<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
   const blk = (cal, n) => { if (!cal) return null; const off = Math.round((new Date().setHours(12,0,0,0) - new Date(cal.start_date + "T12:00:00")) / 864e5); const a = cal.avail.slice(off, off + n); return a.length ? a.split("").filter(v => v === "0").length / a.length * 100 : null; };
   const compCals = state.cal.filter(x => x.tier === "Primary");
   const compBlk = n => { const v = compCals.map(c => blk(c, n)).filter(x => x != null); return v.length ? median(v) : null; };
@@ -176,21 +180,25 @@ function renderOurs(S) {
     h += `<tr><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td>
       <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td>
       <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ") : '<span class="muted">no listing linked yet</span>'}</td>
-      <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td><td>${mine.length || "—"}</td>
-      <td class="${avgGap >= 15 ? "up" : avgGap <= -15 ? "down" : ""}">${avgGap == null ? "—" : (avgGap > 0 ? "+" : "") + Math.round(avgGap) + "% avg"}</td></tr>`;
+      <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
+      <td>${c.gross_rent_ytd != null ? `<b>${fmt(c.gross_rent_ytd)}</b><br><span class="muted small">${c.booked_nights_ytd} nights</span>` : "—"}</td>
+      <td>${c.last_booked_at ? new Date(c.last_booked_at).toLocaleDateString() + `<br><span class="${(Date.now() - new Date(c.last_booked_at)) / 864e5 > 30 ? "up" : "muted"} small">${Math.round((Date.now() - new Date(c.last_booked_at)) / 864e5)} days ago</span>` : '<span class="muted">none this year</span>'}</td></tr>`;
   }
-  $("ours").innerHTML = h + `</table></div><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Price gap = our Airbnb pre-tax total vs the Primary median for the same stays.</p>`;
+  $("ours").innerHTML = h + `</table></div><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Gross rent and last booking come from Track (read-only), refreshed nightly; red = no new booking in 30+ days.</p>`;
 }
 
 function quant(a, q) { a = a.slice().sort((x, y) => x - y); if (!a.length) return null; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); }
-function renderDaily() {
-  const nights = {}; // date -> {ours:[], comps:[]}
+const AIRBNB_TAX = 0.1312; // Summit County taxes on Airbnb checkout pages, captured 2026-10-08 (rate-log.csv)
+function renderDaily(ch) {
+  const el = $("daily" + ch);
+  const nights = {};
   for (const r of state.checks) {
-    if (r.channel !== "Airbnb" || r.status !== "available" || !r.total) continue;
+    if (r.channel !== ch || r.status !== "available" || !r.total) continue;
     if (r.tier !== "Ours" && r.tier !== "Primary") continue;
-    const pn = r.total / r.nights, d0 = new Date(r.check_in + "T12:00:00");
+    const allIn = r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total;
+    const pn = allIn / r.nights;
     for (let i = 0; i < r.nights; i++) {
-      const d = new Date(d0); d.setDate(d.getDate() + i); const k = d.toISOString().slice(0, 10);
+      const k = addD(r.check_in, i);
       const n = (nights[k] ||= { ours: [], comps: {} });
       if (r.tier === "Ours") n.ours.push(pn); else (n.comps[r.comp_id] ||= []).push(pn);
     }
@@ -198,42 +206,48 @@ function renderDaily() {
   const start = new Date(); start.setHours(12, 0, 0, 0);
   const pts = [];
   for (let i = 0; i < 120; i++) {
-    const d = new Date(start); d.setDate(d.getDate() + i); const k = d.toISOString().slice(0, 10); const n = nights[k];
+    const d = new Date(start); d.setDate(d.getDate() + i); const k = iso(d); const n = nights[k];
     const comp = n ? Object.values(n.comps).map(v => v.reduce((a, b) => a + b, 0) / v.length) : [];
     pts.push({ k, d, ours: n?.ours.length ? n.ours.reduce((a, b) => a + b, 0) / n.ours.length : null,
       med: comp.length >= 2 ? quant(comp, .5) : null, p25: comp.length >= 3 ? quant(comp, .25) : null, p75: comp.length >= 3 ? quant(comp, .75) : null, n: comp.length });
   }
-  if (!pts.some(p => p.ours != null || p.med != null)) { $("daily").innerHTML = '<p class="muted small">No priced nights yet.</p>'; return; }
-  const W = 1000, H = 300, L = 52, R = 12, T = 12, B = 34;
+  if (!pts.some(p => p.ours != null || p.med != null)) {
+    el.innerHTML = `<p class="muted small" style="padding:18px 0">${ch === "VRBO" ? "VRBO prices aren't pulled automatically yet (VRBO hides prices from automated browsers)." : "No priced nights yet for this channel."}</p>`; return;
+  }
+  const W = 1000, H = 260, L = 52, R = 12, T = 12, B = 34;
   const maxV = Math.max(...pts.flatMap(p => [p.ours, p.med, p.p75]).filter(v => v != null)) * 1.1;
   const step = maxV > 1500 ? 500 : maxV > 600 ? 200 : 100, top = Math.ceil(maxV / step) * step;
   const x = i => L + (W - L - R) * i / 119, y = v => T + (H - T - B) * (1 - v / top);
-  const seg = (key) => { let out = [], cur = []; pts.forEach((p, i) => { if (p[key] != null) cur.push([x(i), y(p[key])]); else if (cur.length) { out.push(cur); cur = []; } }); if (cur.length) out.push(cur); return out; };
-  const path = s => s.map(c => "M" + c.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join("L")).join("");
+  // Connected: one line through every night that has a value (gaps are bridged)
+  const line = key => { const p = pts.map((q, i) => q[key] != null ? [x(i), y(q[key])] : null).filter(Boolean); return p.length ? "M" + p.map(c => c[0].toFixed(1) + "," + c[1].toFixed(1)).join("L") : ""; };
   let g = "";
   for (let v = 0; v <= top; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">$${v.toLocaleString()}</text>`;
-  pts.forEach((p, i) => { if (p.d.getDate() === 1 || i === 0) g += `<text x="${x(i)}" y="${H - 12}" font-size="11" fill="var(--muted)" text-anchor="${i === 0 ? "start" : "middle"}">${p.d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text><line x1="${x(i)}" x2="${x(i)}" y1="${H - B}" y2="${H - B + 4}" stroke="var(--muted)"/>`; if (p.d.getDay() === 5 || p.d.getDay() === 6) g += `<rect x="${x(i) - 2}" y="${T}" width="${(W - L - R) / 119}" height="${H - T - B}" fill="var(--tealbg)" opacity=".5"/>`; });
-  // comp band
-  let band = ""; { let cur = []; const flush = () => { if (cur.length > 1) band += `<path d="M${cur.map(p => x(p.i) + "," + y(p.p75)).join("L")}L${cur.slice().reverse().map(p => x(p.i) + "," + y(p.p25)).join("L")}Z" fill="var(--line)" opacity=".9"/>`; cur = []; };
-    pts.forEach((p, i) => { if (p.p25 != null) cur.push({ ...p, i }); else flush(); }); flush(); }
-  const oursSeg = seg("ours"); let area = oursSeg.filter(c => c.length > 1).map(c => `<path d="M${c[0][0]},${y(0)}L${c.map(p => p.join(",")).join("L")}L${c[c.length - 1][0]},${y(0)}Z" fill="var(--teal)" opacity=".18"/>`).join("");
-  const dots = pts.map((p, i) => p.ours != null ? `<circle cx="${x(i)}" cy="${y(p.ours)}" r="2.5" fill="var(--teal)"/>` : "").join("");
-  $("daily").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily price per night, ours vs comps">${g}${band}${area}
-    <path d="${path(seg("med"))}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-dasharray="6 4"/>
-    <path d="${path(oursSeg)}" fill="none" stroke="var(--teal)" stroke-width="2.5"/>${dots}
-    <line id="xh" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>
-    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" id="hit"/></svg><div class="tip" id="tip"></div>`;
-  const svg = $("daily").querySelector("svg"), tip = $("tip"), xh = $("xh");
-  $("hit").onmousemove = e => {
+  pts.forEach((p, i) => {
+    if (p.d.getDate() === 1 || i === 0) g += `<text x="${x(i)}" y="${H - 12}" font-size="11" fill="var(--muted)" text-anchor="${i === 0 ? "start" : "middle"}">${p.d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text>`;
+    if (p.d.getDay() === 5 || p.d.getDay() === 6) g += `<rect x="${x(i) - 2}" y="${T}" width="${(W - L - R) / 119}" height="${H - T - B}" fill="var(--tealbg)" opacity=".45"/>`;
+  });
+  const bandPts = pts.map((p, i) => p.p25 != null ? { i, ...p } : null).filter(Boolean);
+  const band = bandPts.length > 1 ? `<path d="M${bandPts.map(p => x(p.i) + "," + y(p.p75)).join("L")}L${bandPts.slice().reverse().map(p => x(p.i) + "," + y(p.p25)).join("L")}Z" fill="var(--line)" opacity=".9"/>` : "";
+  const op = pts.map((q, i) => q.ours != null ? [x(i), y(q.ours)] : null).filter(Boolean);
+  const area = op.length > 1 ? `<path d="M${op[0][0]},${y(0)}L${op.map(p => p.join(",")).join("L")}L${op[op.length - 1][0]},${y(0)}Z" fill="var(--teal)" opacity=".16"/>` : "";
+  const dots = pts.map((p, i) => (p.ours != null ? `<circle cx="${x(i)}" cy="${y(p.ours)}" r="2.6" fill="var(--teal)"/>` : "") + (p.med != null ? `<circle cx="${x(i)}" cy="${y(p.med)}" r="2" fill="var(--ink)"/>` : "")).join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ch} all-in price per night, ours vs comps">${g}${band}${area}
+    <path d="${line("med")}" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-dasharray="6 4" stroke-linejoin="round"/>
+    <path d="${line("ours")}" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linejoin="round"/>${dots}
+    <line class="xh" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>
+    <rect class="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip"></div>`;
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh"), hit = el.querySelector(".hit");
+  hit.onmousemove = e => {
     const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) / r.width * W;
     const i = Math.max(0, Math.min(119, Math.round((sx - L) / (W - L - R) * 119))), p = pts[i];
     xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.style.display = "";
     const gap = p.ours != null && p.med ? Math.round((p.ours / p.med - 1) * 100) : null;
-    tip.innerHTML = `<b>${p.d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b><br>Ours: ${fmt(p.ours)}${gap != null ? ` <span class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">(${gap > 0 ? "+" : ""}${gap}%)</span>` : ""}<br>Comp median: ${fmt(p.med)}<br>Comp middle half: ${p.p25 != null ? fmt(p.p25) + "–" + fmt(p.p75) : "—"}<br><span class="muted">${p.n} comps priced</span>`;
-    tip.style.display = "block"; const px = (x(i) / W) * r.width; tip.style.left = Math.min(px + 12, r.width - 190) + "px"; tip.style.top = "10px";
+    tip.innerHTML = `<b>${ch} · ${p.d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b><br>Ours: ${fmt(p.ours)}${gap != null ? ` <span class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">(${gap > 0 ? "+" : ""}${gap}%)</span>` : ""}<br>Comp median: ${fmt(p.med)}<br>Comp middle half: ${p.p25 != null ? fmt(p.p25) + "–" + fmt(p.p75) : "—"}<br><span class="muted">${p.n} comps priced · all-in per night</span>`;
+    tip.style.display = "block"; const px = (x(i) / W) * r.width; tip.style.left = Math.min(px + 12, r.width - 200) + "px"; tip.style.top = "10px";
   };
-  $("hit").onmouseleave = () => { tip.style.display = "none"; xh.style.display = "none"; };
+  hit.onmouseleave = () => { tip.style.display = "none"; xh.style.display = "none"; };
 }
+
 // ---------- Search-a-stay date picker ----------
 const iso = d => d.toISOString().slice(0, 10);
 const addD = (k, n) => { const d = new Date(k + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
@@ -291,6 +305,7 @@ function renderPicker() {
     render();
   };
   $("clearRange").onclick = () => { state.range = null; render(); };
+  $("todayBtn").onclick = () => { const d = new Date(); state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1, 12); renderPicker(); };
   $("rangeLbl").textContent = !R.ci ? "No dates picked: showing everything" : !R.co ? `Check-in ${R.ci} · now pick check-out` :
     `${R.ci} → ${R.co} · ${(new Date(R.co) - new Date(R.ci)) / 864e5} nights · 2 guests`;
   renderResults(pn);
@@ -335,7 +350,7 @@ function render() {
   renderPicker();
   const S = stays().filter(st => !state.range?.co || (st.ci < state.range.co && st.co > state.range.ci));
   renderOurs(S);
-  renderDaily();
+  renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO");
   // Flags first
   const red = S.filter(s => s.gap != null && s.gap >= 15 && s.nAb >= 3);
   const low = S.filter(s => s.gap != null && s.gap <= -15 && s.nAb >= 3);
