@@ -97,7 +97,7 @@ th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
     <h3 class="chh">Direct <span class="small muted">checkout total incl. taxes and fees</span></h3><div class="dchart" id="dailyDirect"></div>
     <h3 class="chh">VRBO</h3><div class="dchart" id="dailyVRBO"></div>
   </div>
-  <div class="card"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
+  <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
     <p class="small muted">Share of Primary comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
     <div class="chart" id="fill"></div><div class="axis" id="fillaxis"></div></div>
   <div class="card"><h2>Add a comp</h2>
@@ -173,7 +173,7 @@ function renderOurs(S) {
   const nComps = state.comps.filter(c => c.tier !== "Ours");
   let h = `<h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.filter(c => c.tier === "Primary").length} Primary comps · ${nComps.filter(c => c.tier === "Secondary").length} Secondary)</span></h2>`;
   if (!ours.length) { $("ours").innerHTML = h + `<p class="muted">None of our homes are in this set yet.</p>`; return; }
-  h += `<div class="wrap"><table><tr><th>Home</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked 30 / 60 / 90 nights<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
+  h += `<div class="wrap"><table><tr><th>Home</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>Blocked 30 / 60 / 90 nights<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
   const blk = (cal, n) => { if (!cal) return null; const off = Math.round((new Date().setHours(12,0,0,0) - new Date(cal.start_date + "T12:00:00")) / 864e5); const a = cal.avail.slice(off, off + n); return a.length ? a.split("").filter(v => v === "0").length / a.length * 100 : null; };
   const compCals = state.cal.filter(x => x.tier === "Primary");
   const compBlk = n => { const v = compCals.map(c => blk(c, n)).filter(x => x != null); return v.length ? median(v) : null; };
@@ -187,8 +187,8 @@ function renderOurs(S) {
     const gaps = mine.map(x => (x.r.total / x.st.medAb - 1) * 100);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
     h += `<tr><td><b style="color:var(--teal2)">${c.label}</b><br><span class="muted small">${c.address || ""}</span></td>
-      <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td>
-      <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ") : '<span class="muted">no listing linked yet</span>'}</td>
+      <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td>
+      <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>") : '<span class="muted">no listing linked yet</span>'}</td>
       <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
       <td>${c.gross_rent_ytd != null ? `<b>${fmt(c.gross_rent_ytd)}</b><br><span class="muted small">${c.booked_nights_ytd} nights</span>` : "—"}</td>
       <td>${c.last_booked_at ? new Date(c.last_booked_at).toLocaleDateString() + `<br><span class="${(Date.now() - new Date(c.last_booked_at)) / 864e5 > 30 ? "up" : "muted"} small">${Math.round((Date.now() - new Date(c.last_booked_at)) / 864e5)} days ago</span>` : '<span class="muted">none this year</span>'}</td></tr>`;
@@ -414,13 +414,13 @@ function render() {
   const pnC = nightData(), today30 = []; for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
   const ord = { Primary: 0, Secondary: 1 };
   const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => ord[a.tier] - ord[b.tier] || a.label.localeCompare(b.label, undefined, { numeric: true }));
-  $("grid").innerHTML = `<tr><th></th><th>Comp</th><th>Property manager</th><th>Tier</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
+  $("grid").innerHTML = `<tr><th></th><th>Comp</th><th>Property manager</th><th>Tier</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
     comps.map(c => {
       const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
       const v = []; for (const [name, days] of Object.entries(pnC[c.id] || {})) for (const k of today30) if (days[k]) v.push(days[k].reduce((x, y) => x + y, 0) / days[k].length * (name === "Airbnb" ? 1 + AIRBNB_TAX : 1));
-      const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ");
+      const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>");
       return `<tr><td><button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button></td><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td><td>${c.host || '<span class="muted">unknown</span>'}</td><td>${c.tier}</td>
-        <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
+        <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
         <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
         <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${c.notes || ""}</td></tr>`;
     }).join("");
@@ -436,7 +436,7 @@ function render() {
 async function loadReqs() {
   const { data } = await sb.from("comp_requests").select("*").eq("set_id", state.set.id).in("status", ["pending","enriched","error"]).order("id", { ascending: false });
   const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  $("reqs").innerHTML = !data?.length ? "" : `<tr><th>Link</th><th>Status</th><th>Title</th><th>Manager</th><th>Beds / sleeps</th><th>Links found</th><th></th></tr>` +
+  $("reqs").innerHTML = !data?.length ? "" : `<tr><th>Link</th><th>Status</th><th>Title</th><th>Manager</th><th>Bedrooms / sleeps</th><th>Links found</th><th></th></tr>` +
     data.map(r => { const i = r.info || {}; return `<tr><td><a href="${esc(r.url)}" target="_blank" rel="noopener">open</a> <span class="muted small">${esc(r.created_by)}</span></td>
       <td>${r.status === "pending" ? "waiting for ThinkStation" : esc(r.status)}</td><td>${esc(i.title || i.error || "")}</td><td>${esc(i.manager)}</td>
       <td>${esc(i.bedrooms || "—")} / ${esc(i.sleeps || "—")}</td>
