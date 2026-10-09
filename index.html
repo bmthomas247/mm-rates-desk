@@ -95,6 +95,7 @@ th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <h3 class="chh">Airbnb <span class="pill">ESTIMATE</span> <span class="small muted">listing total + 13.12% Summit County tax seen at Airbnb checkout (captured 2026-10-08)</span></h3><div class="dchart" id="dailyAirbnb"></div>
     <h3 class="chh">Direct <span class="small muted">checkout total incl. taxes and fees</span></h3><div class="dchart" id="dailyDirect"></div>
+    <div id="directFees"></div>
     <h3 class="chh">VRBO</h3><div class="dchart" id="dailyVRBO"></div>
   </div>
   <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
@@ -388,11 +389,36 @@ function flagHtml(S) {
   h += low.map(s => `<div class="flag amb"><strong>🟡 ${s.ci} · ${WIN[s.w]}</strong> Ours ${fmt(s.ourAb)} is ${pct(s.gap)} under the Primary median ${fmt(s.medAb)}: room to raise about ${fmt(s.medAb - s.ourAb)}.</div>`).join("");
   return h || `<div class="flag ok"><strong>✓ No flags</strong> for these dates: no open stay is 15%+ above or below the Primary median.</div>`;
 }
+function renderDirectFees() {
+  // Average checkout breakdown on direct-booking sites, per property manager (stays we have prices for)
+  const rows = state.checks.filter(r => r.channel === "Direct" && r.status === "available" && r.total && !r.pre_tax);
+  if (!rows.length) { $("directFees").innerHTML = ""; return; }
+  const comp = id => state.comps.find(c => c.id === id) || {};
+  const groups = {};
+  for (const r of rows) {
+    const c = comp(r.comp_id), key = r.tier === "Ours" ? "Moose Management (ours)" : (c.host || "Unknown manager");
+    (groups[key] ||= []).push(r);
+  }
+  const avg = (a, f) => { const v = a.map(f).filter(x => x != null && !isNaN(x)); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+  const line = (name, a) => {
+    const rent = avg(a, r => +r.rent), clean = avg(a, r => r.cleaning == null ? 0 : +r.cleaning), fees = avg(a, r => r.fees == null ? 0 : +r.fees),
+      tax = avg(a, r => +r.taxes), tot = avg(a, r => +r.total), n = avg(a, r => r.nights), homes = new Set(a.map(r => r.comp_id)).size;
+    const feeAll = (clean || 0) + (fees || 0);
+    return `<tr class="${name.includes("ours") ? "ourrow" : ""}"><td><b>${name}</b><br><span class="muted small">${homes} home${homes > 1 ? "s" : ""} · ${a.length} stay${a.length > 1 ? "s" : ""} · avg ${n.toFixed(1)} nights</span></td>
+      <td>${fmt(rent)}</td><td>${clean ? fmt(clean) : '<span class="muted">$0 shown</span>'}</td><td>${fees ? fmt(fees) : '<span class="muted">$0 shown</span>'}</td>
+      <td><b>${fmt(feeAll)}</b><br><span class="muted small">${tot ? Math.round(feeAll / tot * 100) : 0}% of total</span></td><td>${fmt(tax)}</td><td><b>${fmt(tot)}</b><br><span class="muted small">${fmt(tot / n)}/night</span></td></tr>`;
+  };
+  const keys = Object.keys(groups).sort((a, b) => (b.includes("ours") - a.includes("ours")) || a.localeCompare(b));
+  $("directFees").innerHTML = `<h3 class="chh">Average direct-booking fees per stay</h3>
+    <div class="wrap"><table><tr><th>Property manager</th><th>Rent</th><th>Cleaning</th><th>Other fees</th><th>Total fees</th><th>Taxes</th><th>Checkout total</th></tr>` +
+    keys.map(k => line(k, groups[k])).join("") + `</table></div>
+    <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). Our site rolls admin, damage waiver and part of cleaning into the rent, so it shows $0 fees; see claude/reference/mm-fees-2026-10-08.md.</p>`;
+}
 function render() {
   renderPicker();
   const S = stays().filter(st => !state.range?.co || (st.ci < state.range.co && st.co > state.range.ci));
   renderOurs(S);
-  renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO");
+  renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO"); renderDirectFees();
 
   // Fill chart
   const prim = state.cal.filter(c => c.tier === "Primary"), ours = state.cal.find(c => c.tier === "Ours");
