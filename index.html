@@ -199,6 +199,9 @@ async function load(setId) {
   // One comp set: every comp that's been added counts the same (no Primary/Secondary split; Brandon 2026-10-09).
   const one = r => r.tier === "Ours" ? r : { ...r, tier: "Primary" };
   state.comps = (c.data || []).map(one); state.allChecks = state.checks = (k.data || []).map(one); state.cal = (cal.data || []).map(one);
+  const oursIds = state.comps.filter(x => x.tier === "Ours").map(x => x.id);
+  const bk = oursIds.length ? await sb.from("our_bookings").select("*").in("comp_id", oursIds) : { data: [] };
+  state.bookings = bk.data || []; state.bookingsLoaded = !bk.error && state.bookings.length > 0;
   render(); loadReqs();
 }
 
@@ -372,6 +375,43 @@ function nightStats(homeId) {
   }
   return out;
 }
+// ---------- Our bookings (Track, read-only; synced by the ThinkStation puller into our_bookings) ----------
+function homeBookings(homeId) {
+  const rows = (state.bookings || []).filter(b => b.comp_id === homeId && b.status !== "Cancelled");
+  const night = {};
+  for (const b of rows) for (let k = b.arrival; k < b.departure; k = addD(k, 1))
+    night[k] = { kind: b.kind, label: b.kind === "guest" ? `Booked · ${b.channel || "guest"} · ${fmt(b.gross_rent / Math.max(b.nights, 1))}/night` : b.kind === "owner" ? "Owner stay" : "Blocked" + (b.channel ? " · " + b.channel : "") };
+  return { rows, night, synced: state.bookingsLoaded };
+}
+function homeBookTiles(hb) {
+  if (!hb.synced) return `<p class="small muted">Bookings, owner stays and blocks show here after the ThinkStation's next pull (it copies them from Track, read-only).</p>`;
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), y0 = today.slice(0, 4) + "-01-01", n90 = addD(today, 90);
+  const count = (kind, a, b) => { let n = 0; for (const [k, v] of Object.entries(hb.night)) if (v.kind === kind && k >= a && k < b) n++; return n; };
+  return `<div class="tiles">
+    <div class="tile"><span>Booked nights, next 90</span><b>${count("guest", today, n90)}</b><span>of 90</span></div>
+    <div class="tile"><span>Owner stays, next 90</span><b>${count("owner", today, n90)} nights</b><span>${count("owner", y0, today)} so far this year</span></div>
+    <div class="tile"><span>Owner/maintenance blocks, next 90</span><b>${count("block", today, n90)} nights</b><span>${count("block", y0, today)} so far this year</span></div>
+    <div class="tile"><span>Open nights, next 90</span><b>${90 - count("guest", today, n90) - count("owner", today, n90) - count("block", today, n90)}</b><span>sellable</span></div></div>`;
+}
+function homeHolidays(hb) {
+  if (!hb.synced) return `<p class="small muted">Waiting for the first bookings sync.</p>`;
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  return `<div class="wrap"><table><tr><th>Window</th><th>Dates</th><th>Booked</th><th>Owner</th><th>Blocked</th><th>Open</th><th>Status</th></tr>` + PEAKS.filter(p => p[1] >= today).map(([a, b, name]) => {
+    const n = { guest: 0, owner: 0, block: 0, open: 0 }; let tot = 0;
+    for (let k = a; k <= b; k = addD(k, 1)) { tot++; n[hb.night[k]?.kind || "open"]++; }
+    const st = n.open === 0 ? '<b class="down">Full</b>' : n.open === tot ? '<b class="up">Not booked</b>' : `<b>${n.open} open</b>`;
+    return `<tr><td><b>${name}</b></td><td>${a.slice(5)} → ${b.slice(5)}</td><td>${n.guest}</td><td>${n.owner}</td><td>${n.block}</td><td>${n.open}</td><td>${st}</td></tr>`; }).join("") + `</table></div>`;
+}
+function homeBookList(hb, mode) {
+  if (!hb.synced) return `<p class="small muted">Waiting for the first bookings sync.</p>`;
+  let g = hb.rows.filter(b => b.kind === "guest" && b.gross_rent > 0);
+  g = mode === "recent" ? g.filter(b => b.booked_at).sort((a, b) => b.booked_at.localeCompare(a.booked_at)) : g.sort((a, b) => b.gross_rent / b.nights - a.gross_rent / a.nights);
+  g = g.slice(0, 8);
+  if (!g.length) return `<p class="small muted">No guest bookings on file.</p>`;
+  const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" });
+  return `<div class="wrap"><table><tr><th>Stay</th><th>Nights</th><th>Channel</th><th>Rent / night</th><th>Booked</th></tr>` + g.map(b =>
+    `<tr><td>${fd(b.arrival)} → ${fd(b.departure)}</td><td>${b.nights}</td><td>${b.channel || "—"}</td><td><b>${fmt(b.gross_rent / b.nights)}</b><br><span class="muted small">${fmt(b.gross_rent)} total</span></td><td>${b.booked_at ? fd(b.booked_at.slice(0, 10)) : "—"}</td></tr>`).join("") + `</table></div><p class="small muted">Rent = Track gross rent (includes the fees we fold into rent; excludes taxes and itemized fees).</p>`;
+}
 function homeDetail(homeId) {
   const c = state.comps.find(x => x.id === homeId); if (!c) return;
   const num = ((c.label || "").match(/\d{4}/) || [])[0], hk = HK_ALL[num];
@@ -449,6 +489,50 @@ function homeDetail(homeId) {
     : g30 >= 10 ? `We're <b>${pct(g30)}</b> above the comps over the next 30 nights, and booking is keeping up.`
     : g30 <= -15 ? `🟡 We're <b>${pct(g30)}</b> under the comps over the next 30 nights. Room to raise.` : `We're in line with the comps over the next 30 nights (${pct(g30)}).`;
   const cell = (x, ours) => x.med == null ? '<span class="muted small">—</span>' : `${fmt(x.med)}<br><span class="muted small">high ${fmt(x.hi)} · ${x.n}n</span>`;
+  const hb = homeBookings(homeId);
+  // Date picker for this home: list-at for exactly the nights picked (same method as below, ESTIMATE).
+  const hstate = { m: new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12), r: null };
+  const pickInfo = (a, b) => {
+    const nights = []; for (let k = a; k < b; k = addD(k, 1)) nights.push(k);
+    const ch = {};
+    for (const name of ["Airbnb", "Direct"]) {
+      const med = [], hi = [], ours = [];
+      for (const k of nights) { const o = ns[k]?.[name]; if (!o) continue; const comp = Object.values(o.comps).map(v => avg(v));
+        if (comp.length) { med.push(median(comp)); hi.push(quant(comp, 0.75)); } if (o.ours.length) ours.push(avg(o.ours)); }
+      ch[name] = { med: avg(med), hi: avg(hi), ours: avg(ours), n: med.length };
+    }
+    const peak = [...new Set(nights.map(peakOf).filter(Boolean))].join(", ");
+    const tgt = name => ch[name].med == null ? null : peak ? Math.max(ch[name].med, ch[name].hi ?? 0) : ch[name].med;
+    const bA = toBase(tgt("Airbnb"), "Airbnb"), bD = toBase(tgt("Direct"), "Direct"), base = [bA, bD].filter(x => x != null && x > 0);
+    const book = nights.map(k => hb.night[k]?.kind || "open");
+    return { nights, ch, peak, listAt: base.length ? r5(Math.min(...base)) : null, bA: r5(bA), bD: r5(bD), now: r5(toBase(ch.Airbnb.ours, "Airbnb") ?? toBase(ch.Direct.ours, "Direct")), book };
+  };
+  const drawHomeCal = () => {
+    const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), R = hstate.r || {};
+    const colr = { guest: "var(--teal)", owner: "#d4a017", block: "#8a94a6" };
+    const month = m0 => { const y = m0.getFullYear(), m = m0.getMonth(), first = new Date(y, m, 1, 12), days = new Date(y, m + 1, 0).getDate();
+      let h = `<div class="mgrid">` + ["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => `<div class="dow">${d}</div>`).join("");
+      for (let i = 0; i < first.getDay(); i++) h += "<div></div>";
+      for (let d = 1; d <= days; d++) { const k = iso(new Date(y, m, d, 12)), past = k < today, bk = hb.night[k];
+        const comp = Object.values(ns[k] || {}).flatMap(o => Object.values(o.comps).map(v => avg(v))), cm = comp.length ? avg(comp) : null;
+        const cls = ["day", past && "past", k === today && "today", R.a && R.b && k > R.a && k < R.b && "inr", k === R.a && "start", (k === R.b || (k === R.a && !R.b)) && "end"].filter(Boolean).join(" ");
+        h += `<button class="${cls}" data-hk="${k}" ${past ? "disabled" : ""} title="${bk ? bk.label : "Open"}${cm ? " · comps " + fmt(cm) + "/night all-in" : ""}" style="${bk ? `box-shadow:inset 0 -4px 0 ${colr[bk.kind]}` : ""}"><span>${d}</span><small>${cm ? "$" + Math.round(cm) : "&nbsp;"}</small></button>`; }
+      return h + "</div>"; };
+    const m1 = hstate.m, m2 = new Date(m1.getFullYear(), m1.getMonth() + 1, 1, 12), nm = m => m.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    $("hcal").innerHTML = `<div><div class="calhead"><button class="navbtn" id="hprev">‹</button><b>${nm(m1)}</b><span style="width:34px"></span></div>${month(m1)}</div><div><div class="calhead"><span style="width:34px"></span><b>${nm(m2)}</b><button class="navbtn" id="hnext">›</button></div>${month(m2)}</div>`;
+    $("hprev").onclick = () => { hstate.m = new Date(m1.getFullYear(), m1.getMonth() - 1, 1, 12); drawHomeCal(); };
+    $("hnext").onclick = () => { hstate.m = m2; drawHomeCal(); };
+    $("hcal").onclick = e => { const b = e.target.closest("button[data-hk]"); if (!b || b.disabled) return; const k = b.dataset.hk, r = hstate.r;
+      hstate.r = !r || r.b || k <= r.a ? { a: k, b: null } : { a: r.a, b: k }; drawHomeCal(); };
+    if (!R.b) { $("hpick").innerHTML = `<p class="small muted">${R.a ? "Now pick the check-out day." : "Pick a check-in and check-out to see what to list those nights at."}</p>`; return; }
+    const pi = pickInfo(R.a, R.b), cnt = k => pi.book.filter(x => x === k).length;
+    $("hpick").innerHTML = `<h3 class="chh">What to list at: ${R.a} → ${R.b} (${pi.nights.length} nights)${pi.peak ? ` <span class="pill">${pi.peak}</span>` : ""}</h3>
+      <div class="tiles"><div class="tile"><span>List at <span class="pill">ESTIMATE</span></span><b style="color:var(--teal2)">${pi.listAt ? fmt(pi.listAt) + "/night" : "—"}</b><span>${pi.bA && pi.bD ? `Airbnb ${fmt(pi.bA)} · Direct ${fmt(pi.bD)}` : "nightly rent (Beyond base)"}${floor && pi.listAt && pi.listAt < floor ? ` · <span class="up">under ${fmt(floor)} floor</span>` : ""}</span></div>
+        <div class="tile"><span>Ours now</span><b>${pi.now ? fmt(pi.now) + "/night" : "—"}</b><span>nightly rent, from our live price</span></div>
+        <div class="tile"><span>Comps on Airbnb</span><b>${fmt(pi.ch.Airbnb.med)}</b><span>median all-in/night · high ${fmt(pi.ch.Airbnb.hi)}</span></div>
+        <div class="tile"><span>Comps on Direct</span><b>${fmt(pi.ch.Direct.med)}</b><span>median all-in/night · high ${fmt(pi.ch.Direct.hi)}</span></div>
+        <div class="tile"><span>These nights at our home</span><b>${cnt("open")} open</b><span>${cnt("guest")} booked · ${cnt("owner")} owner · ${cnt("block")} blocked</span></div></div>`;
+  };
   $("dlgbody").innerHTML = `<h2 style="margin:0 0 4px">${c.label}</h2><p class="small muted" style="margin:0 0 10px">${c.address || ""} · ${c.bedrooms ?? "—"} bd / ${c.baths ?? "—"} ba / sleeps ${c.sleeps ?? "—"} · ${links || "no listings linked"}</p>
     <div class="flag ${g30 != null && g30 >= 10 ? "red" : g30 != null && g30 <= -15 ? "amb" : "ok"}">${verdict}</div>
     <div class="tiles">
@@ -459,17 +543,16 @@ function homeDetail(homeId) {
       <div class="tile"><span>${new Date().getFullYear()} so far (Track)</span><b>${c.gross_rent_ytd != null ? fmt(c.gross_rent_ytd) : "—"}</b><span>${c.booked_nights_ytd ?? "—"} nights · last booking ${days == null ? "none" : days + " days ago"}</span></div>
       <div class="tile"><span>List at, next 30 <span class="pill">ESTIMATE</span></span><b style="color:var(--teal2)">${fmt(h30.list)}</b><span>nightly rent (Beyond base)</span></div>
     </div>
-    <h3 class="chh">What to list at</h3>
-    <div class="wrap"><table><tr><th>Dates</th><th>List at<br><span class="muted small">nightly rent</span></th><th style="text-align:left">Action</th><th>Ours now<br><span class="muted small">all-in/night</span></th><th>vs comps</th><th>Airbnb comps<br><span class="muted small">median all-in/night</span></th><th>Direct comps<br><span class="muted small">median all-in/night</span></th><th>Blocked<br><span class="muted small">ours / comps</span></th></tr>` +
-    rows.map(r => `<tr><td><b>${lbl(r)}</b>${r.peak ? `<br><span class="pill">${r.peak}</span>` : ""}</td>
-      <td><b style="color:var(--teal2);font-size:15px">${fmt(r.listAt)}</b>${r.bA && r.bD ? `<br><span class="muted small">Airbnb ${fmt(r.bA)} · Direct ${fmt(r.bD)}</span>` : ""}${r.underFloor ? `<br><span class="up small">under ${fmt(floor)} floor</span>` : ""}</td>
-      <td style="text-align:left;white-space:normal;min-width:170px"><b class="${actCls[r.act] || ""}">${r.act}</b><br><span class="muted small">${r.why}</span></td>
-      <td>${fmt(r.ch.Airbnb.ours ?? r.ch.Direct.ours)}${r.now ? `<br><span class="muted small">≈ ${fmt(r.now)} rent</span>` : ""}</td><td class="${r.gap >= 10 ? "up" : r.gap <= -15 ? "down" : ""}">${pct(r.gap)}</td>
-      <td>${cell(r.ch.Airbnb)}</td><td>${cell(r.ch.Direct)}</td>
-      <td>${r.myBlk == null ? "—" : Math.round(r.myBlk) + "%"} / ${r.compBlk == null ? "—" : Math.round(r.compBlk) + "%"}</td></tr>`).join("") + `</table></div>
+    ${homeBookTiles(hb)}
+    <h3 class="chh">Pick dates for this home <span class="small muted">calendar shows our bookings; the number under each day is the comp average all-in per night</span></h3>
+    <div class="legend"><span><i style="background:var(--teal);height:10px"></i>Guest booking</span><span><i style="background:#d4a017;height:10px"></i>Owner stay</span><span><i style="background:#8a94a6;height:10px"></i>Blocked</span><span><i style="background:var(--card);border:1px solid var(--line);height:10px"></i>Open</span></div>
+    <div class="cal2" id="hcal"></div>
+    <div id="hpick"></div>
+    <h3 class="chh">Holidays and events: booked or not</h3>${homeHolidays(hb)}
+    <div class="cal2" style="margin-top:6px"><div><h3 class="chh">Recent bookings</h3>${homeBookList(hb, "recent")}</div><div><h3 class="chh">Top bookings <span class="small muted">highest rent per night</span></h3>${homeBookList(hb, "top")}</div></div>
     <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, admin 8.3% + damage waiver 5%, Airbnb recovery 21.65% (Track fees, 2026-10-08), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
-    <p class="small muted">Sources: comp prices = latest pulls in this Rates Desk (Airbnb listing/checkout pages and manager direct checkouts, each with its link in "Search a stay"); calendars = Airbnb; revenue and last booking = Track (read-only).</p>`;
-  $("dlg").showModal();
+    <p class="small muted">Sources: comp prices = latest pulls in this Rates Desk (Airbnb listing/checkout pages and manager direct checkouts, each with its link in "Search a stay"); calendars = Airbnb; bookings, owner stays, blocks, revenue and last booking = Track (read-only).</p>`;
+  $("dlg").showModal(); drawHomeCal();
 }
 
 // ---------- Search-a-stay date picker ----------
