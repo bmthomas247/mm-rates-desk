@@ -63,6 +63,9 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 .day.fr::after,.day.fa::after,.fdot{content:"";position:absolute;top:4px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--red)}
 .day.fa::after,.fdot.fa{background:#d4a017}
 .fdot{position:static;display:inline-block;margin:0 5px 1px 0;vertical-align:middle}
+#grid td:nth-child(2),#grid th:nth-child(2){text-align:left}
+.xbtn{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
+.xbtn:hover{color:var(--red);border-color:var(--red)}
 </style>
 </head>
 <body>
@@ -395,16 +398,23 @@ function render() {
   const pnC = nightData(), today30 = []; for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
   const ord = { Primary: 0, Secondary: 1 };
   const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => ord[a.tier] - ord[b.tier] || a.label.localeCompare(b.label, undefined, { numeric: true }));
-  $("grid").innerHTML = `<tr><th>Comp</th><th>Property manager</th><th>Tier</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
+  $("grid").innerHTML = `<tr><th></th><th>Comp</th><th>Property manager</th><th>Tier</th><th>Beds / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
     comps.map(c => {
       const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
       const v = []; for (const [name, days] of Object.entries(pnC[c.id] || {})) for (const k of today30) if (days[k]) v.push(days[k].reduce((x, y) => x + y, 0) / days[k].length * (name === "Airbnb" ? 1 + AIRBNB_TAX : 1));
       const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ");
-      return `<tr><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td><td>${c.host || '<span class="muted">unknown</span>'}</td><td>${c.tier}</td>
+      return `<tr><td><button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button></td><td><b>${c.label}</b><br><span class="muted small">${c.address || ""}</span></td><td>${c.host || '<span class="muted">unknown</span>'}</td><td>${c.tier}</td>
         <td>${c.bedrooms ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
         <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
         <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${c.notes || ""}</td></tr>`;
     }).join("");
+  $("grid").onclick = async e => {
+    const b = e.target.closest("button[data-rm]"); if (!b) return;
+    const c = state.comps.find(x => x.id === b.dataset.rm);
+    if (!confirm(`Remove ${c.label} from this comp set? Its price history is kept.`)) return;
+    const { error } = await sb.rpc("remove_comp", { cid: c.id });
+    if (error) alert(error.message); else load(state.set.id);
+  };
 }
 
 async function loadReqs() {
