@@ -40,7 +40,7 @@ a{color:var(--teal2)}
 #login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
-dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:900px;width:95vw;padding:16px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
 .dchart{position:relative}.dchart svg{width:100%;height:auto;display:block}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-bottom:6px}.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
 .tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap}
@@ -227,7 +227,7 @@ function renderOurs(S) {
     const mine = S.map(st => ({ st, r: st.rows.find(r => r.comp_id === c.id && r.channel === "Airbnb" && r.status === "available") })).filter(x => x.r && x.st.medAb);
     const gaps = mine.map(x => (x.r.total / x.st.medAb - 1) * 100);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    h += `<tr><td><b style="color:var(--teal2)">${c.label}</b><br><span class="muted small">${c.address || ""}</span></td>
+    h += `<tr class="click" data-home="${c.id}" title="Click for where this home stands and what to list at"><td><b style="color:var(--teal2)">${c.label}</b> <span class="small" style="color:var(--teal2)">›</span><br><span class="muted small">${c.address || ""}</span></td>
       <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td>
       <td>${links.length ? links.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>") : '<span class="muted">no listing linked yet</span>'}</td>
       <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
@@ -247,7 +247,8 @@ function renderOurs(S) {
       <td><b>${fmt(avgOf(withRev, c => +c.gross_rent_ytd))}</b><br><span class="muted small">${Math.round(avgOf(withRev, c => c.booked_nights_ytd) || 0)} nights avg</span></td>
       <td>${avgDays != null ? `<span class="${avgDays > 30 ? "up" : ""}">${Math.round(avgDays)} days ago</span><br><span class="muted small">avg last booking</span>` : "—"}</td></tr>`;
   }
-  $("ours").innerHTML = h + `</table></div><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Gross rent and last booking come from Track (read-only), refreshed nightly; red = no new booking in 30+ days.</p>`;
+  $("ours").innerHTML = h + `</table></div><p class="small" style="color:var(--teal2);margin:8px 0 0"><b>Click a home</b> to see where it stands vs the market and what to list it at.</p><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Gross rent and last booking come from Track (read-only), refreshed nightly; red = no new booking in 30+ days.</p>`;
+  $("ours").querySelectorAll("tr[data-home]").forEach(tr => tr.onclick = () => homeDetail(tr.dataset.home));
 }
 
 function quant(a, q) { a = a.slice().sort((x, y) => x - y); if (!a.length) return null; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); }
@@ -311,6 +312,137 @@ function renderDaily(ch) {
     tip.style.display = "block"; const px = (x(i) / W) * r.width; tip.style.left = Math.min(px + 12, r.width - 200) + "px"; tip.style.top = "10px";
   };
   hit.onmouseleave = () => { tip.style.display = "none"; xh.style.display = "none"; };
+}
+
+// ---------- Click a home: where it stands vs the market + what to list at ----------
+// Our cleaning per home: [shown to guest, hidden in rent]. Source: HK cleaning sheet
+// "0-USE HK UPDATED ... Hidden Cleaning USE THIS ONE.xlsx" (uploaded to MM - Rates, 2026-10-09).
+const HK_ALL = { "3676": [280, 95], "1205": [200, 65], "1206": [215, 70], "1302": [220, 75], "1304": [220, 75], "1313": [240, 80], "1401": [220, 75],
+  "1403": [235, 80], "1404": [240, 80], "3301": [220, 75], "3303": [220, 75], "3307": [220, 75], "3401": [220, 75], "4102": [220, 75], "4104": [210, 70],
+  "4201": [235, 80], "4205": [210, 70], "4206": [245, 80], "4403": [185, 60], "2308": [245, 80], "2207": [225, 75] };
+// Fees hidden in our nightly rent (Track, viewed 2026-10-08; claude/reference/mm-fees-2026-10-08.md):
+// admin 8.3% + damage waiver 5% on every channel, plus channel recovery (Airbnb 21.65%, VRBO 16.68%, Direct 0%).
+const LOAD = { Airbnb: 0.083 + 0.05 + 0.2165, VRBO: 0.083 + 0.05 + 0.1668, Direct: 0.083 + 0.05 };
+const STAY_N = 3; // cleaning is spread over a typical 3-night stay (the comp check windows are 2–3 nights)
+// Peak nights: price toward the higher comps (Brandon, 2026-10-08; RULES.md section 0).
+const PEAKS = [["2026-11-20", "2026-11-22", "Opening weekend"], ["2026-11-25", "2026-11-29", "Thanksgiving"], ["2026-12-19", "2027-01-03", "Christmas / New Year"],
+  ["2027-01-15", "2027-01-18", "MLK weekend"], ["2027-01-22", "2027-01-24", "Snow League halfpipe"], ["2027-01-28", "2027-01-30", "Freestyle International"],
+  ["2027-02-12", "2027-02-15", "Presidents Day"], ["2027-03-13", "2027-03-28", "Spring break"]];
+const peakOf = k => PEAKS.find(p => k >= p[0] && k <= p[1])?.[2] || null;
+
+function nightStats(homeId) {
+  // per night, per channel: our all-in/night and each Primary comp's all-in/night (Airbnb pre-tax + 13.12% tax)
+  const out = {};
+  for (const r of state.checks) {
+    if (r.status !== "available" || !r.total) continue;
+    const mine = r.comp_id === homeId, prim = r.tier === "Primary";
+    if (!mine && !prim) continue;
+    const pn = (r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total) / r.nights;
+    for (let i = 0; i < r.nights; i++) {
+      const k = addD(r.check_in, i), o = ((out[k] ||= {})[r.channel] ||= { ours: [], comps: {} });
+      if (mine) o.ours.push(pn); else (o.comps[r.comp_id] ||= []).push(pn);
+    }
+  }
+  return out;
+}
+function homeDetail(homeId) {
+  const c = state.comps.find(x => x.id === homeId); if (!c) return;
+  const num = ((c.label || "").match(/\d{4}/) || [])[0], hk = HK_ALL[num];
+  const clean = hk ? hk[0] + hk[1] : null;
+  const ns = nightStats(homeId);
+  const myCal = availOf(homeId), compIds = state.comps.filter(x => x.tier === "Primary").map(x => x.id), compCal = compIds.map(availOf).filter(Boolean);
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  // Direct tax rate on the nightly part, from our own direct quotes (Track booking engine); fallback = Airbnb's 13.12%.
+  const dr = state.checks.filter(r => r.tier === "Ours" && r.channel === "Direct" && r.status === "available" && r.rent && r.taxes);
+  const tD = (() => { const v = dr.map(r => { const n = (((state.comps.find(x => x.id === r.comp_id)?.label || "").match(/\d{4}/) || [])[0]); const h = HK_ALL[n]; return h ? r.taxes / (r.rent - h[0] - h[1]) : null; }).filter(x => x > 0 && x < 0.4); return v.length ? median(v) : AIRBNB_TAX; })();
+  // all-in/night → nightly rent (base) for each channel, given our fees. ESTIMATE.
+  const toBase = (allIn, ch) => {
+    if (allIn == null || clean == null) return null;
+    if (ch === "Airbnb") return (allIn / (1 + AIRBNB_TAX) - clean / STAY_N) / (1 + LOAD.Airbnb);
+    if (ch === "Direct") return (allIn - clean / STAY_N) / ((1 + LOAD.Direct) * (1 + tD));
+    return null;
+  };
+  const r5 = v => v == null ? null : Math.round(v / 5) * 5;
+  const floor = state.set.owner_floor ? +state.set.owner_floor : null;
+  // periods: 8 weeks, then calendar months out to 180 nights
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), periods = [];
+  for (let w = 0; w < 8; w++) periods.push({ a: addD(today, w * 7), b: addD(today, w * 7 + 6) });
+  let s = addD(today, 56); const end = addD(today, 179);
+  while (s <= end) { const d = new Date(s + "T12:00:00"); const last = iso(new Date(d.getFullYear(), d.getMonth() + 1, 0, 12)); periods.push({ a: s, b: last < end ? last : end, month: true }); s = addD(last, 1); }
+  const rows = periods.map(p => {
+    const nights = []; for (let k = p.a; k <= p.b; k = addD(k, 1)) nights.push(k);
+    const ch = {};
+    for (const name of ["Airbnb", "Direct"]) {
+      const med = [], hi = [], ours = [];
+      for (const k of nights) {
+        const o = ns[k]?.[name]; if (!o) continue;
+        const comp = Object.values(o.comps).map(v => avg(v));
+        if (comp.length >= 2) { med.push(median(comp)); hi.push(quant(comp, 0.75)); }
+        if (o.ours.length) ours.push(avg(o.ours));
+      }
+      ch[name] = { med: avg(med), hi: avg(hi), ours: avg(ours), n: med.length };
+    }
+    const blk = cal => { const v = nights.map(k => cal(k)).filter(x => x != null); return v.length ? v.filter(x => x === "0").length / v.length * 100 : null; };
+    const compBlk = compCal.length ? median(compCal.map(blk).filter(x => x != null)) : null, myBlk = myCal ? blk(myCal) : null;
+    const peak = [...new Set(nights.map(peakOf).filter(Boolean))].join(", ");
+    const busy = compBlk != null && compBlk >= 50;
+    const useHigh = !!peak || busy;
+    const tgt = name => ch[name].med == null ? null : useHigh ? Math.max(ch[name].med, ch[name].hi ?? 0) : ch[name].med;
+    const bA = toBase(tgt("Airbnb"), "Airbnb"), bD = toBase(tgt("Direct"), "Direct");
+    const nowA = toBase(ch.Airbnb.ours, "Airbnb"), nowD = toBase(ch.Direct.ours, "Direct");
+    const base = [bA, bD].filter(x => x != null && x > 0);
+    let listAt = base.length ? Math.min(...base) : null;
+    const now = nowA ?? nowD;
+    const gap = ch.Airbnb.ours && ch.Airbnb.med ? (ch.Airbnb.ours / ch.Airbnb.med - 1) * 100 : ch.Direct.ours && ch.Direct.med ? (ch.Direct.ours / ch.Direct.med - 1) * 100 : null;
+    const behind = myBlk != null && compBlk != null && myBlk <= compBlk - 15, ahead = myBlk != null && compBlk != null && myBlk >= compBlk + 15;
+    let act = "Set", why = "Matches the comp median" + (useHigh ? " toward the higher comps (" + (peak || "comps filling up") + ")" : "");
+    if (gap != null) {
+      if (gap >= 10 && behind) { act = "Lower"; why = "Above the comps and booking slower"; }
+      else if (gap >= 10) { act = "Hold"; listAt = now; why = "Above the comps but booking keeps up"; }
+      else if (gap <= -15 && ahead) { act = "Raise"; why = "Below the comps and filling faster"; }
+      else if (gap <= -15) { act = "Raise"; why = "Below the comps"; }
+      else if (behind) { act = "Check listing"; listAt = now; why = "Price is in line but we're booking slower: check min stay, photos, fees"; }
+      else { act = "Hold"; listAt = now ?? listAt; why = "In line with the comps"; }
+    }
+    if (useHigh && listAt != null && now != null && listAt < now && act !== "Lower") listAt = now; // never undercut peak nights we're already selling
+    const underFloor = floor != null && listAt != null && listAt < floor;
+    return { ...p, nights: nights.length, ch, compBlk, myBlk, peak: peak || (busy ? "Comps 50%+ blocked" : ""), gap, act, why, listAt: r5(listAt), now: r5(now), bA: r5(bA), bD: r5(bD), underFloor };
+  });
+  const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const lbl = p => p.month ? new Date(p.a + "T12:00:00").toLocaleDateString(undefined, { month: "long" }) + (p.a.slice(8) !== "01" ? " (from " + fd(p.a) + ")" : "") : fd(p.a) + " – " + fd(p.b);
+  const actCls = { Lower: "up", Raise: "down", "Check listing": "up" };
+  // headline: next 30 nights
+  const n30 = rows.slice(0, 4), wavg = (f) => { const v = n30.map(f).filter(x => x != null); return v.length ? avg(v) : null; };
+  const h30 = { ours: wavg(r => r.ch.Airbnb.ours ?? r.ch.Direct.ours), med: wavg(r => r.ch.Airbnb.ours != null ? r.ch.Airbnb.med : r.ch.Direct.ours != null ? r.ch.Direct.med : (r.ch.Airbnb.med ?? r.ch.Direct.med)), my: wavg(r => r.myBlk), cb: wavg(r => r.compBlk), list: wavg(r => r.listAt) };
+  const g30 = h30.ours && h30.med ? (h30.ours / h30.med - 1) * 100 : null;
+  const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join(" · ");
+  const days = c.last_booked_at ? Math.round((Date.now() - new Date(c.last_booked_at)) / 864e5) : null;
+  const verdict = g30 == null ? `We don't have a live price for this home yet, so the list-at numbers below come from the comps only.`
+    : g30 >= 10 && h30.my != null && h30.cb != null && h30.my <= h30.cb - 15 ? `🔴 <b>Not booking.</b> Next 30 nights we're <b>${pct(g30)}</b> vs the comps and ${Math.round(h30.my)}% blocked vs ${Math.round(h30.cb)}% for the comps. Lower to the list-at numbers below.`
+    : g30 >= 10 ? `We're <b>${pct(g30)}</b> above the comps over the next 30 nights, and booking is keeping up.`
+    : g30 <= -15 ? `🟡 We're <b>${pct(g30)}</b> under the comps over the next 30 nights. Room to raise.` : `We're in line with the comps over the next 30 nights (${pct(g30)}).`;
+  const cell = (x, ours) => x.med == null ? '<span class="muted small">—</span>' : `${fmt(x.med)}<br><span class="muted small">high ${fmt(x.hi)} · ${x.n}n</span>`;
+  $("dlgbody").innerHTML = `<h2 style="margin:0 0 4px">${c.label}</h2><p class="small muted" style="margin:0 0 10px">${c.address || ""} · ${c.bedrooms ?? "—"} bd / ${c.baths ?? "—"} ba / sleeps ${c.sleeps ?? "—"} · ${links || "no listings linked"}</p>
+    <div class="flag ${g30 != null && g30 >= 10 ? "red" : g30 != null && g30 <= -15 ? "amb" : "ok"}">${verdict}</div>
+    <div class="tiles">
+      <div class="tile"><span>Ours, next 30 nights</span><b>${fmt(h30.ours)}</b><span>all-in per night</span></div>
+      <div class="tile"><span>Comp median</span><b>${fmt(h30.med)}</b><span>all-in per night</span></div>
+      <div class="tile"><span>Ours vs comps</span><b class="${g30 >= 10 ? "up" : g30 <= -15 ? "down" : ""}">${pct(g30)}</b></div>
+      <div class="tile"><span>Blocked next 30 <span class="pill">ESTIMATE</span></span><b>${h30.my == null ? "—" : Math.round(h30.my) + "%"}</b><span>comps ${h30.cb == null ? "—" : Math.round(h30.cb) + "%"}</span></div>
+      <div class="tile"><span>${new Date().getFullYear()} so far (Track)</span><b>${c.gross_rent_ytd != null ? fmt(c.gross_rent_ytd) : "—"}</b><span>${c.booked_nights_ytd ?? "—"} nights · last booking ${days == null ? "none" : days + " days ago"}</span></div>
+      <div class="tile"><span>List at, next 30 <span class="pill">ESTIMATE</span></span><b style="color:var(--teal2)">${fmt(h30.list)}</b><span>nightly rent (Beyond base)</span></div>
+    </div>
+    <h3 class="chh">What to list at</h3>
+    <div class="wrap"><table><tr><th>Dates</th><th>List at<br><span class="muted small">nightly rent</span></th><th style="text-align:left">Action</th><th>Ours now<br><span class="muted small">all-in/night</span></th><th>vs comps</th><th>Airbnb comps<br><span class="muted small">median all-in/night</span></th><th>Direct comps<br><span class="muted small">median all-in/night</span></th><th>Blocked<br><span class="muted small">ours / comps</span></th></tr>` +
+    rows.map(r => `<tr><td><b>${lbl(r)}</b>${r.peak ? `<br><span class="pill">${r.peak}</span>` : ""}</td>
+      <td><b style="color:var(--teal2);font-size:15px">${fmt(r.listAt)}</b>${r.bA && r.bD ? `<br><span class="muted small">Airbnb ${fmt(r.bA)} · Direct ${fmt(r.bD)}</span>` : ""}${r.underFloor ? `<br><span class="up small">under ${fmt(floor)} floor</span>` : ""}</td>
+      <td style="text-align:left;white-space:normal;min-width:170px"><b class="${actCls[r.act] || ""}">${r.act}</b><br><span class="muted small">${r.why}</span></td>
+      <td>${fmt(r.ch.Airbnb.ours ?? r.ch.Direct.ours)}${r.now ? `<br><span class="muted small">≈ ${fmt(r.now)} rent</span>` : ""}</td><td class="${r.gap >= 10 ? "up" : r.gap <= -15 ? "down" : ""}">${pct(r.gap)}</td>
+      <td>${cell(r.ch.Airbnb)}</td><td>${cell(r.ch.Direct)}</td>
+      <td>${r.myBlk == null ? "—" : Math.round(r.myBlk) + "%"} / ${r.compBlk == null ? "—" : Math.round(r.compBlk) + "%"}</td></tr>`).join("") + `</table></div>
+    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the Primary comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, admin 8.3% + damage waiver 5%, Airbnb recovery 21.65% (Track fees, 2026-10-08), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
+    <p class="small muted">Sources: comp prices = latest pulls in this Rates Desk (Airbnb listing/checkout pages and manager direct checkouts, each with its link in "Search a stay"); calendars = Airbnb; revenue and last booking = Track (read-only).</p>`;
+  $("dlg").showModal();
 }
 
 // ---------- Search-a-stay date picker ----------
