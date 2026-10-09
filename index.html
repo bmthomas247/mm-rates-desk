@@ -24,9 +24,9 @@ main{max-width:1180px;margin:0 auto;padding:16px}
 .card h2{font-size:15px;margin:0 0 10px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
 .kpi{border:1px solid var(--line);border-radius:10px;padding:12px}.kpi b{display:block;font-size:22px;color:var(--teal2)}
-.flag{border-radius:10px;padding:10px 12px;margin:6px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.flag{border-radius:10px;padding:10px 12px;margin:6px 0;line-height:1.5}
 .flag.red{background:var(--redbg)}.flag.ok{background:var(--greenbg)}.flag.amb{background:var(--amberbg)}
-.flag strong{min-width:150px}
+.flag strong{margin-right:8px}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:500;font-size:12px}
 tr.click{cursor:pointer}tr.click:hover td{background:var(--tealbg)}
@@ -68,6 +68,8 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 .xbtn:hover{color:var(--red);border-color:var(--red)}
 .ourrow td{background:var(--tealbg)}.ourrow td:first-child b{color:var(--teal2)}.ourrow td:nth-child(2){color:var(--teal2);font-weight:600}
 th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
+#restable th:nth-child(n+5),#restable td:nth-child(n+5){text-align:center}
+.avgrow td{border-top:2px solid var(--teal);background:var(--tealbg)}
 </style>
 </head>
 <body>
@@ -193,6 +195,17 @@ function renderOurs(S) {
       <td>${[30, 60, 90].map(n => { const o = blk(cal, n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
       <td>${c.gross_rent_ytd != null ? `<b>${fmt(c.gross_rent_ytd)}</b><br><span class="muted small">${c.booked_nights_ytd} nights</span>` : "—"}</td>
       <td>${c.last_booked_at ? new Date(c.last_booked_at).toLocaleDateString() + `<br><span class="${(Date.now() - new Date(c.last_booked_at)) / 864e5 > 30 ? "up" : "muted"} small">${Math.round((Date.now() - new Date(c.last_booked_at)) / 864e5)} days ago</span>` : '<span class="muted">none this year</span>'}</td></tr>`;
+  }
+  {
+    const withRev = ours.filter(c => (c.booked_nights_ytd || 0) > 0);
+    const avgOf = (arr, f) => { const v = arr.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const avgBlk = n => avgOf(ours, c => blk(state.cal.find(x => x.comp_id === c.id), n));
+    const days = withRev.filter(c => c.last_booked_at).map(c => (Date.now() - new Date(c.last_booked_at)) / 864e5);
+    const avgDays = days.length ? days.reduce((a, b) => a + b, 0) / days.length : null;
+    h += `<tr class="avgrow"><td><b style="color:var(--teal2)">Moose Management average</b><br><span class="muted small">${ours.length} home${ours.length > 1 ? "s" : ""}${ours.length - withRev.length ? ` · ${ours.length - withRev.length} with no bookings this year left out of revenue` : ""}</span></td><td></td><td></td>
+      <td>${[30, 60, 90].map(n => { const o = avgBlk(n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
+      <td><b>${fmt(avgOf(withRev, c => +c.gross_rent_ytd))}</b><br><span class="muted small">${Math.round(avgOf(withRev, c => c.booked_nights_ytd) || 0)} nights avg</span></td>
+      <td>${avgDays != null ? `<span class="${avgDays > 30 ? "up" : ""}">${Math.round(avgDays)} days ago</span><br><span class="muted small">avg last booking</span>` : "—"}</td></tr>`;
   }
   $("ours").innerHTML = h + `</table></div><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Gross rent and last booking come from Track (read-only), refreshed nightly; red = no new booking in 30+ days.</p>`;
 }
@@ -324,7 +337,7 @@ function renderPicker() {
   };
   $("clearRange").onclick = () => { state.range = null; render(); };
   $("todayBtn").onclick = () => { const d = new Date(); state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1, 12); renderPicker(); };
-  $("flagLegend").innerHTML = nRed || nLow ? `${nRed ? `<span class="fdot fr"></span>${nRed} stays priced 15%+ over the comps` : ""}${nRed && nLow ? " · " : ""}${nLow ? `<span class="fdot fa"></span>${nLow} priced 15%+ under` : ""} · select flagged dates to see the details` : "No flags right now";
+  $("flagLegend").innerHTML = nRed || nLow ? `${nRed ? `<span class="fdot fr"></span>${nRed} stays priced too high` : ""}${nRed && nLow ? " · " : ""}${nLow ? `<span class="fdot fa"></span>${nLow} priced too low` : ""} · pick those dates to see what to change` : "No flags right now";
   $("rangeLbl").textContent = !R.ci ? "No dates picked: showing everything" : !R.co ? `Check-in ${R.ci} · now pick check-out` :
     `${R.ci} → ${R.co} · ${(new Date(R.co) - new Date(R.ci)) / 864e5} nights · 2 guests`;
   renderResults(pn);
@@ -358,8 +371,10 @@ function renderResults(pn) {
     });
   }
   const th = (key, label) => `<th class="sortable" data-sort="${key}">${label}${sk.key === key ? (sk.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
-  const cell = q => !q ? '<span class="muted small">—</span>' : q.status ? `<span class="muted small">${q.status}${q.min ? " · min " + q.min : ""}</span>` :
-    `${q.url ? `<a href="${q.url}" target="_blank" rel="noopener"><b>${fmt(q.total)}</b></a>` : `<b>${fmt(q.total)}</b>`}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night</span>`;
+  const chMed = {}; for (const ch of ["Airbnb", "VRBO", "Direct"]) chMed[ch] = median(rows.filter(r => r.c.tier === "Primary" && r.q[ch]?.total).map(r => r.q[ch].total));
+  const cell = (q, ch, ours) => !q ? '<span class="muted small">—</span>' : q.status ? `<span class="muted small">${q.status}${q.min ? " · min " + q.min : ""}</span>` :
+    `${(() => { const g = ours && chMed[ch] ? (q.total / chMed[ch] - 1) * 100 : null; const off = g != null && Math.abs(g) >= 15;
+      const t = `<b${off ? ' class="up"' : ""}>${fmt(q.total)}</b>`; return (q.url ? `<a href="${q.url}" target="_blank" rel="noopener">${t}</a>` : t) + (off ? ` <span class="up small">${g > 0 ? "too high" : "too low"} (${pct(g)})</span>` : ""); })()}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night</span>`;
   const compAb = rows.filter(r => r.c.tier === "Primary" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
   const ourAb = rows.filter(r => r.c.tier === "Ours" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
   const primRows = rows.filter(r => r.c.tier === "Primary" && r.st);
@@ -374,7 +389,7 @@ function renderResults(pn) {
       <div class="tile"><span>Primary comps blocked</span><b>${blockedPct == null ? "—" : Math.round(blockedPct) + "%"}</b><span>ESTIMATE</span></div>
       <div class="tile"><span>Our homes open</span><b>${oursRows.length ? oursRows.filter(r => r.st === "open").length + " of " + oursRows.length : "—"}</b></div></div>
     <div class="wrap"><table id="restable"><tr><th>Home</th>${th("host", "Property manager")}<th>Tier</th><th>Calendar</th>${th("Airbnb", "Airbnb")}${th("VRBO", "VRBO")}${th("Direct", "Direct")}</tr>` +
-    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td><b>${r.c.label}</b></td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.c.tier}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb)}</td><td>${cell(r.q.VRBO)}</td><td>${cell(r.q.Direct)}</td></tr>`).join("") +
+    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td><b>${r.c.label}</b></td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.c.tier}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb, "Airbnb", r.c.tier === "Ours")}</td><td>${cell(r.q.VRBO, "VRBO", r.c.tier === "Ours")}</td><td>${cell(r.q.Direct, "Direct", r.c.tier === "Ours")}</td></tr>`).join("") +
     `</table></div><p class="small muted">Exact = we pulled this exact stay (click the price for its source page). ESTIMATE = built from the nightly prices of pulled stays that cover these nights. Calendar from Airbnb (blocked ≠ booked).</p>`;
   $("restable").onclick = e => { const h = e.target.closest("th[data-sort]"); if (!h) return;
     const k = h.dataset.sort; state.sort = { key: k, dir: sk.key === k ? -sk.dir : 1 }; renderResults(pn); };
@@ -385,9 +400,11 @@ function flagLists(S) {
 }
 function flagHtml(S) {
   const { red, low } = flagLists(S);
-  let h = red.map(s => `<div class="flag red"><strong>🔴 ${s.ci} · ${WIN[s.w]}</strong> Ours ${fmt(s.ourAb)} vs Primary median ${fmt(s.medAb)} (<span class="up">${pct(s.gap)}</span>, ${s.nAb} comps). Suggested: bring the stay to about ${fmt(s.medAb)}, ${fmt(s.ourAb - s.medAb)} less.</div>`).join("");
-  h += low.map(s => `<div class="flag amb"><strong>🟡 ${s.ci} · ${WIN[s.w]}</strong> Ours ${fmt(s.ourAb)} is ${pct(s.gap)} under the Primary median ${fmt(s.medAb)}: room to raise about ${fmt(s.medAb - s.ourAb)}.</div>`).join("");
-  return h || `<div class="flag ok"><strong>✓ No flags</strong> for these dates: no open stay is 15%+ above or below the Primary median.</div>`;
+  const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const n = s => Math.round((new Date(s.co) - new Date(s.ci)) / 864e5);
+  let h = red.map(s => `<div class="flag red"><strong>🔴 ${fd(s.ci)} – ${fd(s.co)}</strong> We're <b>${fmt(s.ourAb - s.medAb)} more</b> than similar homes for this ${n(s)}-night stay (${fmt(s.ourAb)} vs ${fmt(s.medAb)}). Lower it by about ${fmt(s.ourAb - s.medAb)} to match. <span class="muted small">Compared with ${s.nAb} similar homes on Airbnb.</span></div>`).join("");
+  h += low.map(s => `<div class="flag amb"><strong>🟡 ${fd(s.ci)} – ${fd(s.co)}</strong> We're <b>${fmt(s.medAb - s.ourAb)} cheaper</b> than similar homes for this ${n(s)}-night stay (${fmt(s.ourAb)} vs ${fmt(s.medAb)}). We could raise it by about ${fmt(s.medAb - s.ourAb)}. <span class="muted small">Compared with ${s.nAb} similar homes on Airbnb.</span></div>`).join("");
+  return h || `<div class="flag ok"><strong>✓ Priced right</strong> We're within 15% of similar homes for these dates.</div>`;
 }
 function renderDirectFees() {
   // Average checkout breakdown on direct-booking sites, per property manager (stays we have prices for)
