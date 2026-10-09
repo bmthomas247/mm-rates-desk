@@ -70,6 +70,9 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
 #restable th:nth-child(n+5),#restable td:nth-child(n+5){text-align:center}
 .avgrow td{border-top:2px solid var(--teal);background:var(--tealbg)}
+.sbar{display:grid;grid-template-columns:200px 1fr 70px;gap:10px;align-items:center;margin:6px 0;font-size:13px}
+.sbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sbt{display:flex;gap:2px;height:18px}.sbt span{display:block;height:100%;border-radius:3px}.sbv{text-align:right;font-weight:600}
+@media(max-width:600px){.sbar{grid-template-columns:110px 1fr 60px}}
 </style>
 </head>
 <body>
@@ -99,6 +102,7 @@ th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
     <h3 class="chh">Direct <span class="small muted">checkout total incl. taxes and fees</span></h3><div class="dchart" id="dailyDirect"></div>
     <div id="directFees"></div>
     <h3 class="chh">VRBO</h3><div class="dchart" id="dailyVRBO"></div>
+    <div id="siteFees"></div>
   </div>
   <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
     <p class="small muted">Share of Primary comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
@@ -426,16 +430,47 @@ function renderDirectFees() {
       <td><b>${fmt(feeAll)}</b><br><span class="muted small">${tot ? Math.round(feeAll / tot * 100) : 0}% of total</span></td><td>${fmt(tax)}</td><td><b>${fmt(tot)}</b><br><span class="muted small">${fmt(tot / n)}/night</span></td></tr>`;
   };
   const keys = Object.keys(groups).sort((a, b) => (b.includes("ours") - a.includes("ours")) || a.localeCompare(b));
-  $("directFees").innerHTML = `<h3 class="chh">Average direct-booking fees per stay</h3>
+  const parts = [["rent", "Rent", "var(--teal)"], ["cleaning", "Cleaning", "#3b82c4"], ["fees", "Other fees", "#d4a017"], ["taxes", "Taxes", "#8a94a6"]];
+  const stats = keys.map(k => { const a = groups[k]; const o = { k };
+    for (const [f] of parts) o[f] = avg(a, r => r[f] == null ? 0 : +r[f]) || 0; o.total = avg(a, r => +r.total) || 0; return o; });
+  const maxT = Math.max(...stats.map(x => x.total)) || 1;
+  const bars = `<div class="legend">${parts.map(([, l, c]) => `<span><i style="background:${c};height:10px"></i>${l}</span>`).join("")}</div>` +
+    stats.map(x => `<div class="sbar"><div class="sbl">${x.k}</div><div class="sbt">${parts.map(([f, l, c]) => x[f] > 0 ? `<span style="width:${x[f] / maxT * 100}%;background:${c}" title="${l}: ${fmt(x[f])}"></span>` : "").join("")}</div><div class="sbv">${fmt(x.total)}</div></div>`).join("");
+  $("directFees").innerHTML = `<h3 class="chh">Average direct-booking fees per stay</h3>${bars}
     <div class="wrap"><table><tr><th>Property manager</th><th>Rent</th><th>Cleaning</th><th>Other fees</th><th>Total fees</th><th>Taxes</th><th>Checkout total</th></tr>` +
     keys.map(k => line(k, groups[k])).join("") + `</table></div>
     <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). Our site rolls admin, damage waiver and part of cleaning into the rent, so it shows $0 fees; see claude/reference/mm-fees-2026-10-08.md.</p>`;
+}
+function renderSiteFees() {
+  // Average all-in per stay on each booking site: our homes vs Primary comps (stays we have prices for)
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const sites = ["Airbnb", "Direct", "VRBO"].map(ch => {
+    const ok = state.checks.filter(r => r.channel === ch && r.status === "available" && r.total);
+    const allIn = r => r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total;
+    const pick = t => ok.filter(r => r.tier === t);
+    const o = pick("Ours"), c = pick("Primary");
+    const feeShown = a => avg(a.filter(r => r.rent != null).map(r => (+r.cleaning || 0) + (+r.fees || 0)));
+    return { ch, o: avg(o.map(r => allIn(r) / r.nights)), c: avg(c.map(r => allIn(r) / r.nights)), oFee: feeShown(o), cFee: feeShown(c), no: o.length, nc: c.length };
+  });
+  const max = Math.max(...sites.flatMap(x => [x.o || 0, x.c || 0])) || 1;
+  const bar = (v, col) => v ? `<div class="sbt"><span style="width:${v / max * 100}%;background:${col}"></span></div>` : '<div class="muted small">no prices yet</div>';
+  $("siteFees").innerHTML = `<h3 class="chh">Averages by booking site <span class="small muted">all-in price per night</span></h3>
+    <div class="legend"><span><i style="background:var(--teal);height:10px"></i>Ours</span><span><i style="background:var(--ink);height:10px"></i>Primary comps</span></div>` +
+    sites.map(x => `<div style="margin:10px 0"><b>${x.ch}</b>
+      <div class="sbar"><div class="sbl">Ours</div>${bar(x.o, "var(--teal)")}<div class="sbv">${fmt(x.o)}</div></div>
+      <div class="sbar"><div class="sbl">Primary comps</div>${bar(x.c, "var(--ink)")}<div class="sbv">${fmt(x.c)}</div></div></div>`).join("") +
+    `<div class="wrap"><table><tr><th>Booking site</th><th>Ours / night</th><th>Comps / night</th><th>Difference</th><th>Fees shown at checkout (ours)</th><th>Fees shown at checkout (comps)</th></tr>` +
+    sites.map(x => { const g = x.o && x.c ? (x.o / x.c - 1) * 100 : null;
+      return `<tr><td><b>${x.ch}</b><br><span class="muted small">${x.no} of our stays · ${x.nc} comp stays</span></td><td>${fmt(x.o)}</td><td>${fmt(x.c)}</td>
+        <td class="${g != null && Math.abs(g) >= 15 ? "up" : ""}">${pct(g)}</td>
+        <td>${x.ch === "Airbnb" ? '<span class="muted small">in the total</span>' : x.oFee != null ? fmt(x.oFee) : "—"}</td><td>${x.ch === "Airbnb" ? '<span class="muted small">in the total</span>' : x.cFee != null ? fmt(x.cFee) : "—"}</td></tr>`; }).join("") +
+    `</table></div><p class="small muted">All-in = what the guest pays per night including cleaning, fees and taxes (Airbnb adds the estimated 13.12% tax). Airbnb shows one total, so its fees can't be split out. VRBO fills in once KeyData exports are connected.</p>`;
 }
 function render() {
   renderPicker();
   const S = stays().filter(st => !state.range?.co || (st.ci < state.range.co && st.co > state.range.ci));
   renderOurs(S);
-  renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO"); renderDirectFees();
+  renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO"); renderDirectFees(); renderSiteFees();
 
   // Fill chart
   const prim = state.cal.filter(c => c.tier === "Primary"), ours = state.cal.find(c => c.tier === "Ours");
