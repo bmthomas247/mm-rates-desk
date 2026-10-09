@@ -73,6 +73,11 @@ th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
 .sbar{display:grid;grid-template-columns:200px 1fr 70px;gap:10px;align-items:center;margin:6px 0;font-size:13px}
 .sbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sbt{display:flex;gap:2px;height:18px}.sbt span{display:block;height:100%;border-radius:3px}.sbv{text-align:right;font-weight:600}
 @media(max-width:600px){.sbar{grid-template-columns:110px 1fr 60px}}
+main .card>h2:first-child,#search>div:first-child>h2{cursor:pointer;user-select:none}
+main .card>h2:first-child::before,#search>div:first-child>h2::before{content:"\25BE";display:inline-block;width:1.1em;color:var(--teal2);transition:transform .15s}
+main .card.collapsed>h2:first-child::before,#search.collapsed>div:first-child>h2::before{transform:rotate(-90deg)}
+main .card.collapsed>*:not(:first-child){display:none}
+main .card.collapsed>h2:first-child{margin-bottom:0}
 </style>
 </head>
 <body>
@@ -95,13 +100,25 @@ th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
   </div>
   <div class="card" id="ours"></div>
   <div id="flags" class="hidden"></div>
-  <div class="card"><h2>Daily all-in pricing — next 180 nights</h2>
-    <p class="small muted">Price per night for the whole stay (cleaning, fees and taxes spread across the nights). Hover any night. Dots are nights we have a price for; lines connect them.</p>
+  <div class="card" id="secAirbnb"><h2>Airbnb <span class="pill">ESTIMATE</span></h2>
+    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
+    <p class="small muted">Listing total + 13.12% Summit County tax seen at Airbnb checkout (captured 2026-10-08).</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
-    <h3 class="chh">Airbnb <span class="pill">ESTIMATE</span> <span class="small muted">listing total + 13.12% Summit County tax seen at Airbnb checkout (captured 2026-10-08)</span></h3><div class="dchart" id="dailyAirbnb"></div>
-    <h3 class="chh">Direct <span class="small muted">checkout total incl. taxes and fees</span></h3><div class="dchart" id="dailyDirect"></div>
+    <div class="dchart" id="dailyAirbnb"></div>
+  </div>
+  <div class="card" id="secDirect"><h2>Direct booking sites</h2>
+    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
+    <p class="small muted">Each manager's own site: checkout total incl. taxes and fees.</p>
+    <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
+    <div class="dchart" id="dailyDirect"></div>
     <div id="directFees"></div>
-    <h3 class="chh">VRBO</h3><div class="dchart" id="dailyVRBO"></div>
+  </div>
+  <div class="card" id="secVRBO"><h2>VRBO</h2>
+    <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), next 180 nights. Hover any night. Dots are nights we have a price for; lines connect them.</p>
+    <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
+    <div class="dchart" id="dailyVRBO"></div>
+  </div>
+  <div class="card" id="secSites"><h2>Booking sites compared</h2>
     <div id="siteFees"></div>
   </div>
   <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
@@ -112,10 +129,27 @@ th.sortable{cursor:pointer;color:var(--teal2);text-decoration:underline dotted}
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="newurl" type="url" placeholder="https://www.airbnb.com/rooms/..." style="flex:1;min-width:240px"><button class="tab on" id="addcomp">Add to this set</button></div>
     <p id="addmsg" class="small muted"></p>
     <div class="wrap"><table id="reqs"></table></div></div>
-  <div class="card"><h2>Our comps</h2>
+  <div class="card" id="secComps"><h2>Our comps <span class="muted small" id="compCount"></span></h2>
     <p class="small muted">Every comp in this set. Avg rate = all-in per night across the next 30 nights we have prices for (Airbnb incl. estimated tax). Blocked = Airbnb calendar, next 30 nights (ESTIMATE).</p>
     <div class="wrap"><table id="grid"></table></div></div>
 </main>
+<script>
+// Collapsible sections: click a section title to hide/show it. Remembered per browser (if storage is available).
+(() => {
+  const key = c => "mmc:" + (c.id || (c.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40));
+  const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const set = (k, v) => { try { v ? localStorage.setItem(k, "1") : localStorage.removeItem(k); } catch (e) {} };
+  const apply = () => document.querySelectorAll("main .card").forEach(c => { if (get(key(c))) c.classList.add("collapsed"); });
+  document.addEventListener("click", e => {
+    const h = e.target.closest("h2"); if (!h) return;
+    const c = h.closest("main .card"); if (!c) return;
+    const first = c.firstElementChild; if (!(first === h || (c.id === "search" && first.contains(h)))) return;
+    c.classList.toggle("collapsed"); set(key(c), c.classList.contains("collapsed"));
+  });
+  new MutationObserver(apply).observe(document.getElementById("ours"), { childList: true });
+  apply();
+})();
+</script>
 <dialog id="dlg"><div id="dlgbody"></div><button class="tab" onclick="dlg.close()">Close</button></dialog>
 
 <script>
@@ -184,7 +218,7 @@ function renderOurs(S) {
   const blk = (cal, n) => { if (!cal) return null; const off = Math.round((new Date().setHours(12,0,0,0) - new Date(cal.start_date + "T12:00:00")) / 864e5); const a = cal.avail.slice(off, off + n); return a.length ? a.split("").filter(v => v === "0").length / a.length * 100 : null; };
   const compCals = state.cal.filter(x => x.tier === "Primary");
   const compBlk = n => { const v = compCals.map(c => blk(c, n)).filter(x => x != null); return v.length ? median(v) : null; };
-  const pc = v => v == null ? "—" : Math.round(v) + "%";
+  const pc = v => v == null ? '<span class="muted" title="No Airbnb calendar pulled for this home yet">—</span>' : Math.round(v) + "%";
   const cb = { 30: compBlk(30), 60: compBlk(60), 90: compBlk(90) };
   for (const c of ours) {
     const links = (c.comp_links || []).filter(l => l.active);
@@ -206,7 +240,9 @@ function renderOurs(S) {
     const avgBlk = n => avgOf(ours, c => blk(state.cal.find(x => x.comp_id === c.id), n));
     const days = withRev.filter(c => c.last_booked_at).map(c => (Date.now() - new Date(c.last_booked_at)) / 864e5);
     const avgDays = days.length ? days.reduce((a, b) => a + b, 0) / days.length : null;
-    h += `<tr class="avgrow"><td><b style="color:var(--teal2)">Moose Management average</b><br><span class="muted small">${ours.length} home${ours.length > 1 ? "s" : ""}${ours.length - withRev.length ? ` · ${ours.length - withRev.length} with no bookings this year left out of revenue` : ""}</span></td><td></td><td></td>
+    h += `<tr class="avgrow"><td><b style="color:var(--teal2)">Moose Management average</b><br><span class="muted small">${ours.length} home${ours.length > 1 ? "s" : ""}${ours.length - withRev.length ? ` · ${ours.length - withRev.length} with no bookings this year left out of revenue` : ""}</span></td>
+      <td>${[c => c.bedrooms, c => c.baths, c => c.sleeps].map(f => { const v = avgOf(ours, c => f(c) == null ? null : +f(c)); return v == null ? "—" : (Math.round(v * 10) / 10); }).join(" / ")}<br><span class="muted small">avg</span></td>
+      <td>${["Airbnb", "VRBO", "Direct"].map(ch => `${ours.filter(c => (c.comp_links || []).some(l => l.active && l.channel === ch)).length} of ${ours.length} on ${ch}`).join("<br>")}</td>
       <td>${[30, 60, 90].map(n => { const o = avgBlk(n), d = o != null && cb[n] != null ? o - cb[n] : null; return `<span class="${d != null && d <= -15 ? "up" : ""}">${pc(o)}</span> <span class="muted small">vs ${pc(cb[n])}</span>`; }).join("<br>")}</td>
       <td><b>${fmt(avgOf(withRev, c => +c.gross_rent_ytd))}</b><br><span class="muted small">${Math.round(avgOf(withRev, c => c.booked_nights_ytd) || 0)} nights avg</span></td>
       <td>${avgDays != null ? `<span class="${avgDays > 30 ? "up" : ""}">${Math.round(avgDays)} days ago</span><br><span class="muted small">avg last booking</span>` : "—"}</td></tr>`;
@@ -464,7 +500,7 @@ function renderSiteFees() {
   });
   const max = Math.max(...sites.flatMap(x => [x.o || 0, x.c || 0])) || 1;
   const bar = (v, col) => v ? `<div class="sbt"><span style="width:${v / max * 100}%;background:${col}"></span></div>` : '<div class="muted small">no prices yet</div>';
-  $("siteFees").innerHTML = `<h3 class="chh">Averages by booking site <span class="small muted">all-in price per night</span></h3>
+  $("siteFees").innerHTML = `<p class="small muted">Average all-in price per night on each booking site: our homes vs Primary comps.</p>
     <div class="legend"><span><i style="background:var(--teal);height:10px"></i>Ours</span><span><i style="background:var(--ink);height:10px"></i>Primary comps</span></div>` +
     sites.map(x => `<div style="margin:10px 0"><b>${x.ch}</b>
       <div class="sbar"><div class="sbl">Ours</div>${bar(x.o, "var(--teal)")}<div class="sbv">${fmt(x.o)}</div></div>
@@ -502,6 +538,7 @@ function render() {
   const pnC = nightData(), today30 = []; for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
   const ord = { Primary: 0, Secondary: 1 };
   const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => ord[a.tier] - ord[b.tier] || a.label.localeCompare(b.label, undefined, { numeric: true }));
+  $("compCount").textContent = `(${comps.length} total · ${comps.filter(c => c.tier === "Primary").length} Primary · ${comps.filter(c => c.tier === "Secondary").length} Secondary)`;
   $("grid").innerHTML = `<tr><th></th><th>Comp</th><th>Property manager</th><th>Tier</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>Blocked next 30</th><th>Avg rate / night</th><th>Notes</th></tr>` +
     comps.map(c => {
       const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
