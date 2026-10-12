@@ -17,7 +17,10 @@ header{background:var(--head);color:var(--headink);border-bottom:4px solid var(-
 header h1{font-size:17px;margin:0;font-weight:700}header h1 span{color:var(--teal)}
 .sp{flex:1}.muted{color:var(--muted)}.small{font-size:12px}
 main{max-width:1180px;margin:0 auto;padding:16px}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-bottom:14px}
+.tgrp{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line)}
+.tgname{font-weight:600;color:var(--ink);min-width:150px;flex:1 1 150px;font-size:14px}
+.tgrp .tab{padding:5px 10px;font-size:13px}
 .tab{border:1px solid var(--line);background:var(--card);color:var(--ink2);padding:7px 12px;border-radius:999px;cursor:pointer;font:inherit}
 .tab.on{background:var(--teal);border-color:var(--teal);color:var(--onteal);font-weight:600}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
@@ -182,15 +185,26 @@ async function boot() {
   if (error || !sets?.length) { $("flags").innerHTML = `<p>No access yet — ask Brandon to add <b>${session.user.email}</b> to allowed users.</p>`; return; }
   const r = runs?.[0];
   if (r) $("runinfo").textContent = `Last pull ${new Date(r.started_at).toLocaleString()} · ${r.mode} · ${r.status} · ${r.rows_written} rows`;
+  // A–Z by complex (ignoring a leading "The"), then unit type: Studio Basic/Standard/Premium, then 1BR, 2BR, 3BR...
+  const split = n => { const m = n.match(/^(.*?)\s*[–-]?\s*((?:Studio.*)|(?:\d+\s*BR.*)|(?:\d+\s*Bedrooms?.*))$/i); return m ? [m[1].trim(), m[2].trim()] : [n, ""]; };
+  const typeKey = t => { const lo = t.toLowerCase(); if (lo.startsWith("studio")) return [0, ["basic", "standard", "premium"].findIndex(w => lo.includes(w))]; return [1, parseInt(t) || 0]; };
+  const cx = n => split(n)[0].replace(/^the\s+/i, "").toLowerCase();
+  sets.sort((a, b) => cx(a.name).localeCompare(cx(b.name)) || (([x1, y1], [x2, y2]) => x1 - x2 || y1 - y2)(typeKey(split(a.name)[1]), typeKey(split(b.name)[1])));
   state.sets = sets;
-  $("tabs").innerHTML = sets.map(s => `<button class="tab" data-id="${s.id}">${s.name}</button>`).join("");
+  const groups = [];
+  for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
+    if (g && g.c === c) g.items.push([s, t]); else groups.push({ c, items: [[s, t]] }); }
+  $("tabs").innerHTML = groups.map(g => `<div class="tgrp"><span class="tgname">${g.c}</span>${g.items.map(([s, t]) =>
+    `<button class="tab" data-id="${s.id}" title="${s.name}">${(t || s.name).replace(/^Studio\s*[–-]\s*/i, "Studio ")}</button>`).join("")}</div>`).join("");
   $("tabs").onclick = e => e.target.dataset.id && load(e.target.dataset.id);
-  load(sets[0].id);
+  let last = null; try { last = localStorage.getItem("mmSet"); } catch (e) {}
+  load(sets.some(s => s.id === last) ? last : sets[0].id);
 }
 
 async function load(setId) {
   state.set = state.sets.find(s => s.id === setId);
-  [...$("tabs").children].forEach(b => b.classList.toggle("on", b.dataset.id === setId));
+  try { localStorage.setItem("mmSet", setId); } catch (e) {}
+  $("tabs").querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.id === setId));
   const today = new Date().toISOString().slice(0, 10);
   const [c, k, cal] = await Promise.all([
     sb.from("comps").select("*,comp_links(*)").eq("set_id", setId).eq("active", true),
