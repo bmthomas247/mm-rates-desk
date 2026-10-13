@@ -1085,40 +1085,88 @@ function buildReport() {
   return out;
 }
 function openReport() {
-  const rows = buildReport(), set = state.set, gen = new Date();
+  const rows = buildReport(), set = state.set, gen = new Date(), today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
   const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const m = v => v == null ? "—" : "$" + Math.round(v).toLocaleString();
+  const sgn = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + "$" + Math.abs(Math.round(v)).toLocaleString();
+  const pct = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v)) + "%";
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const ON = 5;  // within ±5% of the recommended rate = on target (green)
   const byHome = {}; for (const r of rows) (byHome[r.home] ||= []).push(r);
-  const summary = Object.entries(byHome).map(([home, rs]) => {
-    const c = a => rs.filter(r => r.act === a).length, chg = rs.map(r => r.chg).filter(v => v != null && Math.abs(v) >= 5);
-    return `<tr><td>${escH(home)}</td><td class="r">${c("Raise")}</td><td class="r">${c("Lower")}</td><td class="r">${c("Hold")}</td><td class="r">${chg.length ? (chg.reduce((a, b) => a + b, 0) / chg.length > 0 ? "+" : "") + Math.round(chg.reduce((a, b) => a + b, 0) / chg.length) + "%" : "—"}</td></tr>`; }).join("");
+  const homes = Object.keys(byHome);
+  // One line per week (or a whole period): recommended nightly rate vs what we're charging, averaged over homes with a price.
+  const line = rs => { const p = rs.filter(r => r.now != null && r.sug != null);
+    const rec = avg(p.map(r => r.sug)), our = avg(p.map(r => r.now)), d = rec != null && our != null ? rec - our : null;
+    return { rec, our, d, pc: d != null && our ? d / our * 100 : null, n: p.length }; };
+  const cls = x => x.pc == null ? "" : Math.abs(x.pc) < ON ? "ok" : x.pc > 0 ? "lowp" : "highp";
+  const act = x => x.pc == null ? '<span class="muted">Booked / no price</span>' : Math.abs(x.pc) < ON ? "On target" : x.pc > 0 ? '<span class="up">Raise</span>' : '<span class="down">Lower</span>';
+  const cells = x => `<td class="r"><b>${m(x.rec)}</b></td><td class="r">${m(x.our)}</td><td class="r">${sgn(x.d)}</td><td class="r">${pct(x.pc)}</td><td>${act(x)}</td>`;
+  const head = first => `<thead><tr><th>${first}</th><th class="r">Recommended<div class="sm">nightly rate</div></th><th class="r">We're averaging<div class="sm">nightly rate</div></th><th class="r">Change $</th><th class="r">Change %</th><th>Action</th></tr></thead>`;
+  const weeks = [...new Set(rows.map(r => r.a))];
+  const weekTable = (rs, showHomes) => `<table>${head("Week")}<tbody>${weeks.map(a => { const w = rs.filter(r => r.a === a), r0 = w[0], x = line(w);
+    return `<tr class="${cls(x)}"><td>${fd(a)} – ${fd(r0.b)}<div class="sm">${r0.pos}${r0.why ? " · " + escH(r0.why) : ""}${showHomes ? ` · ${x.n} of ${w.length} homes priced` : ""}</div></td>${cells(x)}</tr>`; }).join("")}</tbody></table>`;
+  // Top: whole group, and one line per home
+  const all = line(rows);
+  const homeRows = homes.map(h => { const x = line(byHome[h]), on = weeks.filter(a => { const y = line(byHome[h].filter(r => r.a === a)); return y.pc != null && Math.abs(y.pc) < ON; }).length;
+    return `<tr data-home="${escH(h)}" class="${cls(x)}"><td>${escH(h)}</td>${cells(x)}<td class="r">${on} of ${weeks.length}</td></tr>`; }).join("");
+  // Per-home detail by channel (only when one home is picked)
   const cell = x => x.med == null ? '<td class="r muted">—</td><td class="r muted">—</td>' : `<td class="r">${m(x.med)}<div class="sm">${m(x.lo)}–${m(x.top ?? x.hi)}</div></td><td class="r">${m(x.ours)}</td>`;
-  const tables = Object.entries(byHome).map(([home, rs]) => `<h2>${escH(home)}</h2><table><thead><tr><th>Week</th><th>Position we want</th>
-    <th class="r">Airbnb comps<div class="sm">avg (low–top)</div></th><th class="r">Ours</th><th class="r">VRBO comps</th><th class="r">Ours</th><th class="r">Direct comps</th><th class="r">Ours</th>
-    <th>Where we sit</th><th class="r">Nightly rent now</th><th class="r">Suggested</th><th>Change</th></tr></thead><tbody>${rs.map(r => `<tr>
-    <td>${fd(r.a)} – ${fd(r.b)}</td><td>${r.pos}${r.why ? `<div class="sm">${escH(r.why)}</div>` : ""}</td>${cell(r.ch.Airbnb)}${cell(r.ch.VRBO)}${cell(r.ch.Direct)}
-    <td>${r.where}</td><td class="r">${m(r.now)}</td><td class="r"><b>${m(r.sug)}</b>${r.floor ? '<div class="sm warn">under owner floor</div>' : ""}</td>
-    <td class="${r.act === "Raise" ? "up" : r.act === "Lower" ? "down" : ""}">${r.act}${r.chg != null && r.act !== "Hold" ? ` ${r.chg > 0 ? "+" : ""}${Math.round(r.chg)}%` : ""}</td></tr>`).join("")}</tbody></table>`).join("");
-  const csvRows = [["Home", "Week start", "Week end", "Position", "Why", "Airbnb comp avg", "Airbnb comp low", "Airbnb comp top", "Our Airbnb", "VRBO comp avg", "Our VRBO", "Direct comp avg", "Our Direct", "Where we sit", "Nightly rent now", "Suggested nightly rent", "Action", "Change %"]]
-    .concat(rows.map(r => [r.home, r.a, r.b, r.pos, r.why, r.ch.Airbnb.med, r.ch.Airbnb.lo, r.ch.Airbnb.top, r.ch.Airbnb.ours, r.ch.VRBO.med, r.ch.VRBO.ours, r.ch.Direct.med, r.ch.Direct.ours, r.where, r.now, r.sug, r.act, r.chg]
-      .map(v => typeof v === "number" ? Math.round(v) : v ?? "")));
+  const detail = rs => `<details><summary>Comp prices by channel (all-in per night)</summary><table><thead><tr><th>Week</th><th class="r">Airbnb comps<div class="sm">avg (low–top)</div></th><th class="r">Ours</th><th class="r">VRBO comps</th><th class="r">Ours</th><th class="r">Direct comps</th><th class="r">Ours</th><th>Where we sit</th></tr></thead><tbody>${rs.map(r => `<tr>
+    <td>${fd(r.a)} – ${fd(r.b)}</td>${cell(r.ch.Airbnb)}${cell(r.ch.VRBO)}${cell(r.ch.Direct)}<td>${r.where}${r.floor ? '<div class="sm warn">suggested is under owner floor</div>' : ""}</td></tr>`).join("")}</tbody></table></details>`;
+  const homeSections = homes.map(h => `<section class="pick" data-home="${escH(h)}" style="display:none"><h2>${escH(h)} · week by week</h2>${weekTable(byHome[h], false)}${detail(byHome[h])}</section>`).join("");
+  // Bookings: our upcoming guest stays vs the comps' average nightly rate for the same nights (ESTIMATE)
+  const label = new Map(state.comps.filter(c => c.tier === "Ours").map(c => [c.id, (c.label || "").replace(/\s*\(.*\)\s*$/, "")]));
+  const end = addD(today, 180), bk = [];
+  for (const b of state.bookings || []) {
+    if (b.kind !== "guest" || b.status === "Cancelled" || !label.has(b.comp_id) || !b.nights || !b.gross_rent || b.departure <= today || b.arrival > end) continue;
+    const ks = []; for (let k = b.arrival < today ? today : b.arrival; k < b.departure; k = addD(k, 1)) ks.push(k);
+    const c = ks.map(k => adrDay(k)).filter(x => x.adr != null && x.n >= 2);
+    if (c.length < ks.length / 2) continue;
+    const comp = avg(c.map(x => x.adr)), ours = b.gross_rent / b.nights, gap = ours - comp;
+    bk.push({ home: label.get(b.comp_id), b, comp, ours, gap, pc: gap / comp * 100, tot: gap * b.nights });
+  }
+  const good = bk.filter(x => x.pc >= 10).sort((p, q) => q.tot - p.tot), bad = bk.filter(x => x.pc <= -15).sort((p, q) => p.tot - q.tot);
+  const bkTable = (list, kind) => !list.length ? `<p class="muted">None ${kind === "good" ? "10%+ above" : "15%+ below"} the comps right now.</p>` : `<table><thead><tr><th>Home</th><th>Stay</th><th class="r">Nights</th><th>Channel</th><th>Booked on</th><th class="r">Our rate<div class="sm">per night</div></th><th class="r">Comp avg<div class="sm">same nights</div></th><th class="r">Gap / night</th><th class="r">Gap %</th><th class="r">Whole stay</th></tr></thead><tbody>${list.map(x => `<tr data-home="${escH(x.home)}" class="${kind === "good" ? "ok" : "lowp"}">
+    <td>${escH(x.home)}</td><td>${fd(x.b.arrival)} – ${fd(x.b.departure)}</td><td class="r">${x.b.nights}</td><td>${escH(x.b.channel || "—")}</td><td>${x.b.booked_at ? fd(x.b.booked_at.slice(0, 10)) : "—"}</td>
+    <td class="r"><b>${m(x.ours)}</b></td><td class="r">${m(x.comp)}</td><td class="r">${sgn(x.gap)}</td><td class="r">${pct(x.pc)}</td><td class="r"><b>${sgn(x.tot)}</b></td></tr>`).join("")}</tbody></table>`;
+  const nightly = (state.nightly || []).length > 0;
+  // CSV: one row per home per week (same numbers as the report)
+  const csvRows = [["Home", "Week start", "Week end", "Position", "Why", "Recommended nightly rate", "Our nightly rate now", "Change $", "Change %", "Action", "Airbnb comp avg (all-in/night)", "Our Airbnb", "VRBO comp avg", "Our VRBO", "Direct comp avg", "Our Direct", "Where we sit"]]
+    .concat(rows.map(r => { const x = line([r]); return [r.home, r.a, r.b, r.pos, r.why, x.rec, x.our, x.d, x.pc, x.pc == null ? "Booked / no price" : Math.abs(x.pc) < ON ? "On target" : x.pc > 0 ? "Raise" : "Lower",
+      r.ch.Airbnb.med, r.ch.Airbnb.ours, r.ch.VRBO.med, r.ch.VRBO.ours, r.ch.Direct.med, r.ch.Direct.ours, r.where].map(v => typeof v === "number" ? Math.round(v) : v ?? ""); }));
   const csv = csvRows.map(r => r.map(v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(",")).join("\n");
   const title = `Pricing report · ${set.name} · ${gen.toLocaleDateString()}`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(title)}</title><style>
-    body{font:13px/1.45 Inter,system-ui,sans-serif;color:#1a1a1a;margin:24px;max-width:1300px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px}
-    table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #e4e7df;padding:5px 6px;text-align:left;vertical-align:top}th{color:#7a8290;font-weight:500}
-    .r{text-align:right}.sm{font-size:11px;color:#7a8290}.muted{color:#7a8290}.up{color:#15803d;font-weight:600}.down{color:#c2410c;font-weight:600}.warn{color:#c2410c}
-    .bar{display:flex;gap:8px;margin:10px 0}.bar button{padding:7px 12px;border:1px solid #ccc;border-radius:999px;background:#fff;cursor:pointer;font:inherit}
-    .note{background:#f6f7f4;border-radius:8px;padding:10px 12px;margin:10px 0}@media print{.bar{display:none}body{margin:10mm}h2{break-before:auto}tr{break-inside:avoid}}
-    </style></head><body><h1>${escH(title)}</h1><div class="sm">Next 180 nights (${fd(rows[0]?.a || iso(gen))} – ${fd(rows[rows.length - 1]?.b || iso(gen))}) · generated ${gen.toLocaleString()} · <b>ESTIMATE</b></div>
-    <div class="bar"><button onclick="window.print()">Print / save as PDF</button><button id="dl">Download CSV</button></div>
-    <div class="note"><b>How we position (Moose Management rule):</b> middle of the comp pack most of the year, never the lowest; the low end is OK in the off-season; the top of the pack on holidays and events.
-    <br><b>Prices:</b> comp and our columns are all-in per night (cleaning, fees and tax spread across the stay; Airbnb and VRBO listing totals + 13.12% Summit County tax seen at checkout). "Avg" is the comps' median, "low–top" is their 25th–90th percentile.
-    <br><b>Targets:</b> middle of the pack = comp median; off-season = comp 25th percentile (low end); holiday/event = comp 90th percentile (top of the pack).
-    <br><b>Suggested</b> nightly rent = our nightly rent now (Track base rate) moved by the same % as the gap between our all-in price and the target, averaged over Airbnb, VRBO and Direct where we have both prices. Our cleaning is a fixed amount, so the rent change needed to fully close the gap is a bit larger than shown. Changes under 5% show as Hold. A holiday/event week is never lowered unless we're already the highest. "Booked / no price" = no open stays for that home that week.
-    <br><b>Sources:</b> comps from the Rates Desk (Supabase): Airbnb from AirROI calendars and Airbnb checkout pages, VRBO from KeyData comp-set exports, Direct from each manager's booking site; ours from the Track API (read-only). Holidays/events: the Desk's peak list and our high-demand notes. Off-season dates: Park City Mountain opening Nov 20, 2026 (KPCW); April closing is an ESTIMATE.</div>
-    <h2>Summary (weeks)</h2><table><thead><tr><th>Home</th><th class="r">Raise</th><th class="r">Lower</th><th class="r">Hold</th><th class="r">Avg change</th></tr></thead><tbody>${summary}</tbody></table>
-    ${tables}<script>document.getElementById("dl").onclick=()=>{const b=new Blob([${JSON.stringify(csv)}],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=${JSON.stringify(`pricing-report-${set.id}-${iso(gen)}.csv`)};a.click();};<\/script></body></html>`;
+    body{font:13px/1.45 Inter,system-ui,sans-serif;color:#1a1a1a;margin:24px;max-width:1200px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:24px 0 6px}
+    table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{border-bottom:1px solid #e4e7df;padding:6px 7px;text-align:left;vertical-align:top}th{color:#7a8290;font-weight:500}
+    .r{text-align:right}.sm{font-size:11px;color:#7a8290;font-weight:400}.muted{color:#7a8290}.up{color:#15803d;font-weight:600}.down{color:#c2410c;font-weight:600}.warn{color:#c2410c}
+    tr.ok td{background:#e7f6ea}tr.lowp td{background:#fdf0e6}
+    .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.bar button,.bar select{padding:7px 12px;border:1px solid #ccc;border-radius:999px;background:#fff;cursor:pointer;font:inherit}
+    .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0}.tile{background:#f6f7f4;border-radius:10px;padding:10px 12px}.tile span{display:block;font-size:11px;color:#7a8290}.tile b{font-size:20px}
+    .key span{display:inline-block;padding:2px 8px;border-radius:6px;margin-right:6px}details{margin:8px 0}summary{cursor:pointer;color:#0f766e}
+    .note{background:#f6f7f4;border-radius:8px;padding:10px 12px;margin:18px 0;font-size:12px}@media print{.bar{display:none}body{margin:10mm}tr{break-inside:avoid}}
+    </style></head><body><h1>${escH(title)}</h1><div class="sm">Next 180 nights (${fd(rows[0]?.a || today)} – ${fd(rows[rows.length - 1]?.b || today)}) · ${homes.length} homes · <b>ESTIMATE</b></div>
+    <div class="bar"><label>Show: <select id="pick"><option value="">Whole group (${homes.length} homes)</option>${homes.map(h => `<option>${escH(h)}</option>`).join("")}</select></label>
+      <button onclick="window.print()">Print / save as PDF</button><button id="dl">Download CSV</button></div>
+    <div class="tiles"><div class="tile"><span>Recommended nightly rate (avg)</span><b>${m(all.rec)}</b></div><div class="tile"><span>We're averaging</span><b>${m(all.our)}</b></div>
+      <div class="tile"><span>Change needed</span><b class="${all.d > 0 ? "up" : all.d < 0 ? "down" : ""}">${sgn(all.d)} (${pct(all.pc)})</b></div>
+      <div class="tile"><span>Bookings flagged</span><b>${good.length} good · ${bad.length} low</b></div></div>
+    <div class="key sm"><span style="background:#e7f6ea">Green = on target (within ${ON}% of the recommended rate)</span><span style="background:#fdf0e6">Orange = priced or booked too low</span></div>
+    <section class="grp"><h2>By home · next 180 nights</h2><table>${head("Home").replace("</tr></thead>", '<th class="r">Weeks on target</th></tr></thead>')}<tbody>${homeRows}</tbody></table>
+    <h2>Whole group · week by week</h2>${weekTable(rows, true)}</section>
+    ${homeSections}
+    <h2>Good bookings <span class="sm">upcoming stays booked 10%+ above the comps' average nightly rate</span></h2>${nightly ? bkTable(good, "good") : "<p class='muted'>Needs the comps' daily rates (AirROI / KeyData) for this set.</p>"}
+    <h2>Bookings we took too low <span class="sm">upcoming stays booked 15%+ below the comps' average nightly rate</span></h2>${nightly ? bkTable(bad, "bad") : "<p class='muted'>Needs the comps' daily rates (AirROI / KeyData) for this set.</p>"}
+    <div class="note"><b>How we position (Moose Management rule):</b> middle of the comp pack most of the year, never the lowest; the low end is OK in the off-season; top of the pack on holidays and events.
+    <br><b>Recommended nightly rate</b> = our nightly rent now (Track base rate) moved by the gap between our all-in price and the target (comp median; 25th percentile in the off-season; 90th percentile on holidays/events), averaged over Airbnb, VRBO and Direct. Group numbers are the average across homes with an open, priced week. Within ${ON}% = on target. Holiday/event weeks are never lowered unless we're already the highest.
+    <br><b>Bookings:</b> our Track gross rent per night (includes fees we fold into rent, no taxes) vs the average nightly rate of comps still open on those nights today (before cleaning and tax). Comps' prices today are asking prices, not what they booked at.
+    <br><b>Sources:</b> comps from the Rates Desk (Supabase): Airbnb from AirROI calendars and Airbnb checkout pages, VRBO from KeyData comp-set exports, Direct from each manager's booking site; ours and our bookings from the Track API (read-only). Holidays/events: the Desk's peak list and our high-demand notes. Off-season: Park City Mountain opening Nov 20, 2026 (KPCW); April closing is an ESTIMATE. Generated ${gen.toLocaleString()}.</div>
+    <script>
+    const pick=document.getElementById("pick");pick.onchange=()=>{const h=pick.value;
+      document.querySelector(".grp").style.display=h?"none":"";
+      document.querySelectorAll("section.pick").forEach(s=>s.style.display=s.dataset.home===h?"":"none");
+      document.querySelectorAll("tr[data-home]").forEach(t=>t.style.display=!h||t.dataset.home===h?"":"none");};
+    document.getElementById("dl").onclick=()=>{const b=new Blob([${JSON.stringify(csv)}],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=${JSON.stringify(`pricing-report-${set.id}-${iso(gen)}.csv`)};a.click();};<\/script></body></html>`;
   // Show it right on the Desk (pop-up windows get blocked), with "open in a new tab" and CSV download links. 2026-10-13
   const url = URL.createObjectURL(new Blob([html], { type: "text/html" })), csvUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   $("dlgbody").innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 40px 8px 0"><b>${escH(title)}</b><span class="sp"></span>
