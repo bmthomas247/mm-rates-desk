@@ -1077,7 +1077,7 @@ function buildReport() {
       let act = allBooked ? "Booked / no price" : sug == null ? "No comp prices" : chg >= 5 ? "Raise" : chg <= -5 ? "Lower" : "Hold";
       if (act === "Lower" && peak && where !== "Highest") act = "Hold";  // never undercut a holiday / event week we're not already topping
       if (act === "Hold") sug = now;
-      out.push({ home: h.label, homeId: h.id, a: w.a, b: w.b, pos, why: peak || off || "", ch, now: r5(now), sug: r5(sug), chg, act, where,
+      out.push({ home: (h.label || "").replace(/\s*\(.*\)\s*$/, ""), homeId: h.id,  // unit only: no owner names in a report we send out a: w.a, b: w.b, pos, why: peak || off || "", ch, now: r5(now), sug: r5(sug), chg, act, where,
         floor: state.set.owner_floor && sug != null && sug < +state.set.owner_floor });
     }
   }
