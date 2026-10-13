@@ -129,8 +129,8 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
   </div>
   <div class="tabs" id="tabs"></div>
   <div class="card" id="search">
-    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
-    <p class="small muted">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
+    <p class="small muted" id="calHelp">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
     <p class="small" id="flagLegend"></p>
     <div class="cal2" id="cal2"></div>
     <div id="results"></div>
@@ -249,6 +249,29 @@ async function allRows(q, size = 1000) {
 // One call per set (Supabase function set_latest_checks: same rows as the latest_checks view, about 4x faster), kept for
 // 10 minutes so switching back to a set is instant (2026-10-13).
 const _setCache = {};
+// Daily rate (ADR) per comp per day: Supabase function set_latest_nightly (AirROI Airbnb calendars, KeyData VRBO exports).
+const _ntCache = {};
+async function setNightly(setId) {
+  const c = _ntCache[setId]; if (c && Date.now() - c.t < 6e5) return c.r;
+  const r = await sb.rpc("set_latest_nightly", { p_set: setId });
+  if (!r.error) _ntCache[setId] = { t: Date.now(), r };
+  return r;
+}
+// Comp ADR for one day: average of each open comp's own nightly rate (its Airbnb rate, else VRBO), before cleaning and tax.
+function adrDay(k) {
+  const by = {};
+  for (const n of state.nightly || []) {
+    if (n.tier === "Ours") continue;
+    const off = Math.round((new Date(k + "T12:00:00") - new Date(n.start_date + "T12:00:00")) / 864e5);
+    if (off < 0 || off >= n.avail.length) continue;
+    (by[n.comp_id] ||= {})[n.channel] = { open: n.avail[off] === "1", rate: n.rates[off] };
+  }
+  const vals = []; let closed = 0;
+  for (const ch of Object.values(by)) { const x = ch.Airbnb || ch.VRBO; if (!x) continue;
+    if (!x.open) { closed++; continue; } if (x.rate != null) vals.push(+x.rate); }
+  return { adr: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null, n: vals.length, closed, total: vals.length + closed };
+}
+const adrMode = () => (state.calMode || "adr") === "adr" && (state.nightly || []).length > 0;
 async function setChecks(setId, today) {
   const c = _setCache[setId]; if (c && Date.now() - c.t < 6e5) return c.r;
   const r = await sb.rpc("set_latest_checks", { p_set: setId, p_from: today });
@@ -260,10 +283,12 @@ async function load(setId) {
   try { localStorage.setItem("mmSet", setId); } catch (e) {}
   $("tabs").querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.id === setId));
   const today = new Date().toISOString().slice(0, 10);
-  const [c, k, cal] = await Promise.all([
+  const [c, k, cal, nt] = await Promise.all([
     sb.from("comps").select("*,comp_links(*)").eq("set_id", setId).eq("active", true),
     setChecks(setId, today),
-    sb.from("latest_calendar").select("*").eq("set_id", setId)]);
+    sb.from("latest_calendar").select("*").eq("set_id", setId),
+    setNightly(setId)]);
+  state.nightly = nt.data || [];
   // One comp set: every comp that's been added counts the same (no Primary/Secondary split; Brandon 2026-10-09).
   const one = r => r.tier === "Ours" ? r : { ...r, tier: "Primary" };
   state.comps = (c.data || []).map(one); state.allChecks = state.checks = (k.data || []).map(one); state.cal = (cal.data || []).map(one);
@@ -584,9 +609,9 @@ function homeDetail(homeId) {
       let h = `<div class="mgrid">` + ["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => `<div class="dow">${d}</div>`).join("");
       for (let i = 0; i < first.getDay(); i++) h += "<div></div>";
       for (let d = 1; d <= days; d++) { const k = iso(new Date(y, m, d, 12)), past = k < today, bk = hb.night[k];
-        const comp = Object.values(ns[k] || {}).flatMap(o => Object.values(o.comps).map(v => avg(v))), cm = comp.length ? avg(comp) : null;
+        const comp = Object.values(ns[k] || {}).flatMap(o => Object.values(o.comps).map(v => avg(v))), ad = !past && adrMode() ? adrDay(k).adr : null, cm = ad || (comp.length ? avg(comp) : null);
         const cls = ["day", past && "past", k === today && "today", R.a && R.b && k > R.a && k < R.b && "inr", k === R.a && "start", (k === R.b || (k === R.a && !R.b)) && "end"].filter(Boolean).join(" ");
-        h += `<button class="${cls}" data-hk="${k}" ${past ? "disabled" : ""} title="${bk ? bk.label : "Open"}${cm ? " · comps " + fmt(cm) + "/night all-in" : ""}${past ? "" : escH(mkTitle(k))}" style="${bk ? `box-shadow:inset 0 -4px 0 ${colr[bk.kind]}` : ""}">${past ? "" : `<span class="mkd">${mkIcons(k)}</span>`}<span>${d}</span><small>${cm ? "$" + Math.round(cm) : "&nbsp;"}</small></button>`; }
+        h += `<button class="${cls}" data-hk="${k}" ${past ? "disabled" : ""} title="${bk ? bk.label : "Open"}${cm ? " · comps " + fmt(cm) + (ad ? "/night daily rate (ADR, before cleaning & tax)" : "/night all-in") : ""}${past ? "" : escH(mkTitle(k))}" style="${bk ? `box-shadow:inset 0 -4px 0 ${colr[bk.kind]}` : ""}">${past ? "" : `<span class="mkd">${mkIcons(k)}</span>`}<span>${d}</span><small>${cm ? "$" + Math.round(cm) : "&nbsp;"}</small></button>`; }
       return h + "</div>"; };
     const m1 = hstate.m, m2 = new Date(m1.getFullYear(), m1.getMonth() + 1, 1, 12), nm = m => m.toLocaleDateString(undefined, { month: "long", year: "numeric" });
     $("hcal").innerHTML = `<div><div class="calhead"><button class="navbtn" id="hprev">‹</button><b>${nm(m1)}</b><span style="width:34px"></span></div>${month(m1)}</div><div><div class="calhead"><span style="width:34px"></span><b>${nm(m2)}</b><button class="navbtn" id="hnext">›</button></div>${month(m2)}</div>`;
@@ -671,7 +696,8 @@ function renderPicker() {
       const k = iso(new Date(y, m, d, 12)), past = k < today, inf = past ? {} : dayInfo(k);
       const cls = ["day", past && "past", k === today && "today", R.ci && R.co && k > R.ci && k < R.co && "inr",
         k === R.ci && "start", (k === R.co || (k === R.ci && !R.co)) && "end", inf.blocked >= .6 && "hot", flagNight[k]].filter(Boolean).join(" ");
-      h += `<button class="${cls}" data-k="${k}" ${past ? "disabled" : ""} title="${inf.med ? "Avg comp rate " + fmt(inf.med) + "/night all-in (" + inf.n + " comps priced)" : "No comp prices for this night yet"}${inf.blocked != null ? " · " + Math.round(inf.blocked * 100) + "% of comps blocked" : ""}${past ? "" : escH(mkTitle(k))}">${past ? "" : `<span class="mkd">${mkIcons(k)}</span>`}<span>${d}</span><small>${inf.med ? "$" + Math.round(inf.med) : "&nbsp;"}</small></button>`;
+      const ad = !past && adrMode() ? adrDay(k) : null, shown = ad ? ad.adr : inf.med;
+      h += `<button class="${cls}" data-k="${k}" ${past ? "disabled" : ""} title="${ad ? (ad.adr ? "Comp daily rate (ADR) " + fmt(ad.adr) + "/night before cleaning & tax: " + ad.n + " comps open" + (ad.closed ? ", " + ad.closed + " booked/blocked" : "") : "No comp nightly rates for this day") + " · ESTIMATE" : inf.med ? "Avg comp rate " + fmt(inf.med) + "/night all-in (" + inf.n + " comps priced)" : "No comp prices for this night yet"}${inf.blocked != null ? " · " + Math.round(inf.blocked * 100) + "% of comps blocked" : ""}${past ? "" : escH(mkTitle(k))}">${past ? "" : `<span class="mkd">${mkIcons(k)}</span>`}<span>${d}</span><small>${shown ? "$" + Math.round(shown) : "&nbsp;"}</small></button>`;
     }
     return h + "</div>";
   };
@@ -688,10 +714,19 @@ function renderPicker() {
     render();
   };
   $("clearRange").onclick = () => { state.range = null; render(); };
+  $("calAdr").onclick = () => { state.calMode = "adr"; render(); };
+  $("calAllin").onclick = () => { state.calMode = "allin"; render(); };
   $("todayBtn").onclick = () => { const d = new Date(); state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1, 12); renderPicker(); };
   $("flagLegend").innerHTML = nRed || nLow ? `${nRed ? `<span class="fdot fr"></span>${nRed} stays priced too high` : ""}${nRed && nLow ? " · " : ""}${nLow ? `<span class="fdot fa"></span>${nLow} priced too low` : ""} · pick those dates to see what to change` : "No flags right now";
-  $("rangeLbl").textContent = !R.ci ? "No dates picked: showing everything" : !R.co ? `Check-in ${R.ci} · now pick check-out` :
-    `${R.ci} → ${R.co} · ${(new Date(R.co) - new Date(R.ci)) / 864e5} nights · 2 guests`;
+  const rAdr = (() => { if (!R.co || !adrMode()) return ""; const v = []; for (let k = R.ci; k < R.co; k = addD(k, 1)) { const a = adrDay(k).adr; if (a) v.push(a); }
+    return v.length ? ` · comp daily rate ${fmt(v.reduce((a, b) => a + b, 0) / v.length)}/night (ADR, before cleaning & tax, ESTIMATE)` : ""; })();
+  $("rangeLbl").textContent = (!R.ci ? "No dates picked: showing everything" : !R.co ? `Check-in ${R.ci} · now pick check-out` :
+    `${R.ci} → ${R.co} · ${(new Date(R.co) - new Date(R.ci)) / 864e5} nights · 2 guests`) + rAdr;
+  $("calAdr").classList.toggle("on", adrMode()); $("calAllin").classList.toggle("on", !adrMode());
+  $("calAdr").disabled = !(state.nightly || []).length;
+  $("calHelp").textContent = adrMode()
+    ? "Pick check-in, then check-out. The number under each day is the comps' average daily rate (ADR): each open comp's own nightly rate that day, before cleaning and tax, even when it has a minimum stay (Airbnb from AirROI, else VRBO from KeyData; ESTIMATE). Red = 60%+ of comps already blocked. Hover a day for the count."
+    : "Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.";
   renderResults(pn);
 }
 function renderResults(pn) {
