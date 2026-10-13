@@ -1116,11 +1116,16 @@ function openReport() {
   const homeSections = homes.map(h => `<section class="pick" data-home="${escH(h)}" style="display:none"><h2>${escH(h)} · week by week</h2>${weekTable(byHome[h], false)}${detail(byHome[h])}</section>`).join("");
   // Bookings: our upcoming guest stays vs the comps' average nightly rate for the same nights (ESTIMATE)
   const label = new Map(state.comps.filter(c => c.tier === "Ours").map(c => [c.id, (c.label || "").replace(/\s*\(.*\)\s*$/, "")]));
+  // every comp's own nightly rate that night, booked or open (so already-booked cheaper comps still count)
+  const rateAll = k => { const by = {}; for (const n of state.nightly || []) { if (n.tier === "Ours") continue;
+      const off = Math.round((new Date(k + "T12:00:00") - new Date(n.start_date + "T12:00:00")) / 864e5);
+      if (off >= 0 && off < (n.rates || []).length && n.rates[off] != null) (by[n.comp_id] ||= {})[n.channel] = +n.rates[off]; }
+    const v = Object.values(by).map(x => x.Airbnb ?? x.VRBO).filter(x => x != null); return { adr: avg(v), n: v.length }; };
   const end = addD(today, 180), bk = [];
   for (const b of state.bookings || []) {
     if (b.kind !== "guest" || b.status === "Cancelled" || !label.has(b.comp_id) || !b.nights || !b.gross_rent || b.departure <= today || b.arrival > end) continue;
     const ks = []; for (let k = b.arrival < today ? today : b.arrival; k < b.departure; k = addD(k, 1)) ks.push(k);
-    const c = ks.map(k => adrDay(k)).filter(x => x.adr != null && x.n >= 2);
+    const c = ks.map(k => rateAll(k)).filter(x => x.adr != null && x.n >= 2);
     if (c.length < ks.length / 2) continue;
     const comp = avg(c.map(x => x.adr)), ours = b.gross_rent / b.nights, gap = ours - comp;
     bk.push({ home: label.get(b.comp_id), b, comp, ours, gap, pc: gap / comp * 100, tot: gap * b.nights });
@@ -1159,7 +1164,7 @@ function openReport() {
     <h2>Bookings we took too low <span class="sm">upcoming stays booked 15%+ below the comps' average nightly rate</span></h2>${nightly ? bkTable(bad, "bad") : "<p class='muted'>Needs the comps' daily rates (AirROI / KeyData) for this set.</p>"}
     <div class="note"><b>How we position (Moose Management rule):</b> middle of the comp pack most of the year, never the lowest; the low end is OK in the off-season; top of the pack on holidays and events.
     <br><b>Recommended nightly rate</b> = our nightly rent now (Track base rate) moved by the gap between our all-in price and the target (comp median; 25th percentile in the off-season; 90th percentile on holidays/events), averaged over Airbnb, VRBO and Direct. Group numbers are the average across homes with an open, priced week. Within ${ON}% = on target. Holiday/event weeks are never lowered unless we're already the highest.
-    <br><b>Bookings:</b> our Track gross rent per night (includes fees we fold into rent, no taxes) vs the average nightly rate of comps still open on those nights today (before cleaning and tax). Comps' prices today are asking prices, not what they booked at.
+    <br><b>Bookings:</b> our Track gross rent per night (includes fees we fold into rent, no taxes) vs the average nightly rate of all comps on those nights, booked or open (each comp's own Airbnb rate, else VRBO; before cleaning and tax). Comp rates are their listed prices as of the last pull, not what they booked at.
     <br><b>Sources:</b> comps from the Rates Desk (Supabase): Airbnb from AirROI calendars and Airbnb checkout pages, VRBO from KeyData comp-set exports, Direct from each manager's booking site; ours and our bookings from the Track API (read-only). Holidays/events: the Desk's peak list and our high-demand notes. Off-season: Park City Mountain opening Nov 20, 2026 (KPCW); April closing is an ESTIMATE. Generated ${gen.toLocaleString()}.</div>
     <script>
     const pick=document.getElementById("pick");pick.onchange=()=>{const h=pick.value;
