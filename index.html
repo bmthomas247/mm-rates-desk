@@ -246,6 +246,15 @@ async function allRows(q, size = 1000) {
   const bad = rest.find(r => r.error);
   return { data: first.data.concat(...rest.map(r => r.data || [])), error: bad?.error || null, count: first.count };
 }
+// One call per set (Supabase function set_latest_checks: same rows as the latest_checks view, about 4x faster), kept for
+// 10 minutes so switching back to a set is instant (2026-10-13).
+const _setCache = {};
+async function setChecks(setId, today) {
+  const c = _setCache[setId]; if (c && Date.now() - c.t < 6e5) return c.r;
+  const r = await sb.rpc("set_latest_checks", { p_set: setId, p_from: today });
+  if (!r.error) _setCache[setId] = { t: Date.now(), r };
+  return r;
+}
 async function load(setId) {
   state.set = state.sets.find(s => s.id === setId);
   try { localStorage.setItem("mmSet", setId); } catch (e) {}
@@ -253,8 +262,7 @@ async function load(setId) {
   const today = new Date().toISOString().slice(0, 10);
   const [c, k, cal] = await Promise.all([
     sb.from("comps").select("*,comp_links(*)").eq("set_id", setId).eq("active", true),
-    allRows(() => sb.from("latest_checks").select("*", { count: "exact" }).eq("set_id", setId).gte("check_in", today)
-      .order("check_in").order("comp_id").order("channel").order("check_out")),
+    setChecks(setId, today),
     sb.from("latest_calendar").select("*").eq("set_id", setId)]);
   // One comp set: every comp that's been added counts the same (no Primary/Secondary split; Brandon 2026-10-09).
   const one = r => r.tier === "Ours" ? r : { ...r, tier: "Primary" };
@@ -341,12 +349,14 @@ function renderOurs(S) {
 }
 
 function quant(a, q) { a = a.slice().sort((x, y) => x - y); if (!a.length) return null; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); }
+// A priced stay: open, or open but under the minimum nights (the nightly price is still real). 2026-10-13
+const priced = r => (r.status === "available" || r.status === "min_stay") && r.total;
 const AIRBNB_TAX = 0.1312; // Summit County taxes on Airbnb checkout pages, captured 2026-10-08 (rate-log.csv)
 function renderDaily(ch) {
   const el = $("daily" + ch);
   const nights = {};
   for (const r of state.checks) {
-    if (r.channel !== ch || r.status !== "available" || !r.total) continue;
+    if (r.channel !== ch || !priced(r)) continue;
     if (r.tier !== "Ours" && r.tier !== "Primary") continue;
     const allIn = r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total;
     const pn = allIn / r.nights;
@@ -424,7 +434,7 @@ function nightStats(homeId) {
   // per night, per channel: our all-in/night and each Primary comp's all-in/night (Airbnb pre-tax + 13.12% tax)
   const out = {};
   for (const r of state.checks) {
-    if (r.status !== "available" || !r.total) continue;
+    if (!priced(r)) continue;
     const mine = r.comp_id === homeId, prim = r.tier === "Primary";
     if (!mine && !prim) continue;
     const pn = (r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total) / r.nights;
@@ -623,7 +633,7 @@ function nightData() {
   // perNight[comp][channel][date] = avg price/night from available pulled stays covering that night
   const pn = {};
   for (const r of state.checks) {
-    if (r.status !== "available" || !r.total) continue;
+    if (!priced(r)) continue;
     for (let i = 0; i < r.nights; i++) {
       const k = addD(r.check_in, i);
       ((pn[r.comp_id] ||= {})[r.channel] ||= {})[k] ||= []; pn[r.comp_id][r.channel][k].push(r.total / r.nights);
@@ -690,11 +700,13 @@ function renderResults(pn) {
   const nights = []; for (let k = R.ci; k < R.co; k = addD(k, 1)) nights.push(k);
   const quote = (id, ch) => {
     const exact = state.checks.find(r => r.comp_id === id && r.channel === ch && r.check_in === R.ci && r.check_out === R.co);
-    if (exact) return exact.status === "available" ? { total: +exact.total, exact: true, url: exact.url, pre: exact.pre_tax, cap: exact.captured_at } : { status: exact.status, min: exact.min_nights };
-    const per = pn[id]?.[ch]; if (!per) return null;
-    if (!nights.every(k => per[k])) return null;
+    if (exact && exact.status === "available") return { total: +exact.total, exact: true, url: exact.url, pre: exact.pre_tax, cap: exact.captured_at };
+    if (exact && exact.status !== "min_stay") return { status: exact.status, min: exact.min_nights };
+    // Not pulled for these exact dates (or under the minimum stay): build it from the nightly prices we have.
+    const per = pn[id]?.[ch];
+    if (!per || !nights.every(k => per[k])) return exact ? { status: exact.status, min: exact.min_nights } : null;
     const tot = nights.reduce((a, k) => a + per[k].reduce((x, y) => x + y, 0) / per[k].length, 0);
-    return { total: tot, exact: false, pre: ch === "Airbnb" };
+    return { total: tot, exact: false, pre: ch !== "Direct", min: exact?.min_nights };
   };
   const order = { Ours: 0, Primary: 1, Secondary: 2 };
   const rows = state.comps.slice().sort((a, b) => order[a.tier] - order[b.tier] || a.label.localeCompare(b.label, undefined, { numeric: true })).map(c => {
@@ -716,7 +728,7 @@ function renderResults(pn) {
   const chMed = {}; for (const ch of ["Airbnb", "VRBO", "Direct"]) chMed[ch] = median(rows.filter(r => r.c.tier === "Primary" && r.q[ch]?.total).map(r => r.q[ch].total));
   const cell = (q, ch, ours) => !q ? '<span class="muted small">—</span>' : q.status ? `<span class="muted small">${q.status}${q.min ? " · min " + q.min : ""}</span>` :
     `${(() => { const g = ours && chMed[ch] ? (q.total / chMed[ch] - 1) * 100 : null; const off = g != null && Math.abs(g) >= 15;
-      const t = `<b${off ? ' class="up"' : ""}>${fmt(q.total)}</b>`; return (q.url ? `<a href="${q.url}" target="_blank" rel="noopener">${t}</a>` : t) + (off ? ` <span class="up small">${g > 0 ? "too high" : "too low"} (${pct(g)})</span>` : ""); })()}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night</span>`;
+      const t = `<b${off ? ' class="up"' : ""}>${fmt(q.total)}</b>`; return (q.url ? `<a href="${q.url}" target="_blank" rel="noopener">${t}</a>` : t) + (off ? ` <span class="up small">${g > 0 ? "too high" : "too low"} (${pct(g)})</span>` : ""); })()}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}${q.min && q.min > nights.length ? ` <span class="muted small">min ${q.min} nights</span>` : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night</span>`;
   const compAb = rows.filter(r => r.c.tier === "Primary" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
   const ourAb = rows.filter(r => r.c.tier === "Ours" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
   const primRows = rows.filter(r => r.c.tier === "Primary" && r.st);
