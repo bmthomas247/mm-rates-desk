@@ -328,7 +328,7 @@ function rangeNights() { const R = state.range; if (!R?.co) return null; const a
 function renderOurs(S) {
   const ours = state.comps.filter(c => c.tier === "Ours").sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   const nComps = state.comps.filter(c => c.tier !== "Ours");
-  let h = `<h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.length} comps)</span></h2>`;
+  let h = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.length} comps)</span></h2><span class="sp"></span><button class="tab on" id="reportBtn" title="Suggested nightly rent for every home, week by week, for the next 180 nights">Generate pricing report (180 days)</button></div>`;
   if (!ours.length) { $("ours").innerHTML = h + `<p class="muted">None of our homes are in this set yet.</p>`; return; }
   h += `<div class="wrap"><table><tr><th>Home</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>${rangeNights() ? "Blocked on your dates" : "Blocked 30 / 60 / 90 nights"}<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
   const blk = (cal, n) => { if (!cal) return null; const off = Math.round((new Date().setHours(12,0,0,0) - new Date(cal.start_date + "T12:00:00")) / 864e5); const a = cal.avail.slice(off, off + n); return a.length ? a.split("").filter(v => v === "0").length / a.length * 100 : null; };
@@ -1015,6 +1015,114 @@ $("mkSave").onclick = async () => {
   $("mkMsg").textContent = error ? error.message : "Saved.";
   if (!error) { ["mkTitle", "mkStart", "mkEnd", "mkUrl", "mkNotes"].forEach(i => $(i).value = ""); $("mkNoLink").checked = false; $("mkAdd").classList.add("hidden"); loadMarket(); }
 };
+
+// ---------- Pricing report: next 180 nights, every home in this set (2026-10-13) ----------
+// Brandon's positioning rule: middle of the comp pack most of the time (never the lowest), the low end in the off-season,
+// the top of the pack on holidays / events. Everything here is an ESTIMATE built from the comp prices on the Desk.
+const OFFSEASON = [["2026-10-01", "2026-11-19", "Off-season (before Park City Mountain opens Nov 20)"], ["2027-04-12", "2027-06-15", "Off-season (after lifts close, ESTIMATE)"]];
+const offOf = k => OFFSEASON.find(p => k >= p[0] && k <= p[1])?.[2] || null;
+const eventOf = k => {  // our own high-demand notes count as events too
+  const n = (state.mk?.events || []).find(e => e.source === "manual" && e.impact === "high" && k >= e.start_date && k <= (e.end_date || e.start_date));
+  return n ? n.title : null;
+};
+function buildReport() {
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  const CH = ["Airbnb", "VRBO", "Direct"], all = state.allChecks || state.checks;
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const r5 = v => v == null ? null : Math.round(v / 5) * 5;
+  // per night, per channel: each comp's all-in/night, and each of our homes' all-in/night + nightly rent
+  const comps = {}, ours = {};
+  for (const r of all) {
+    if (!priced(r)) continue;
+    const pn = (r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total) / r.nights;
+    for (let i = 0; i < r.nights; i++) {
+      const k = addD(r.check_in, i);
+      if (r.tier === "Ours") { const o = ((ours[r.comp_id] ||= {})[k] ||= {}); (o[r.channel] ||= []).push(pn);
+        if (r.channel === "Direct" && r.rent) (o.rent ||= []).push(r.rent / r.nights); }
+      else (((comps[k] ||= {})[r.channel] ||= {})[r.comp_id] ||= []).push(pn);
+    }
+  }
+  const weeks = []; for (let w = 0; w < 26; w++) weeks.push({ a: addD(today, w * 7), b: addD(today, w * 7 + 6) });
+  const homes = state.comps.filter(c => c.tier === "Ours").sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  const out = [];
+  for (const h of homes) {
+    for (const w of weeks) {
+      const nights = []; for (let k = w.a; k <= w.b; k = addD(k, 1)) nights.push(k);
+      const peak = [...new Set(nights.map(k => peakOf(k) || eventOf(k)).filter(Boolean))].join(", ");
+      const off = !peak && nights.filter(offOf).length >= 4 ? offOf(nights.find(offOf)) : null;
+      const pos = peak ? "Top of the pack" : off ? "Low end OK" : "Middle of the pack";
+      const ch = {};
+      for (const name of CH) {
+        const med = [], lo = [], hi = [], top = [], our = [];
+        for (const k of nights) {
+          const c = Object.values(comps[k]?.[name] || {}).map(v => avg(v));
+          if (c.length >= 2) { med.push(median(c)); lo.push(quant(c, 0.25)); hi.push(quant(c, 0.75)); top.push(quant(c, 0.9)); }
+          const o = ours[h.id]?.[k]?.[name]; if (o) our.push(avg(o));
+        }
+        const x = { med: avg(med), lo: avg(lo), hi: avg(hi), top: avg(top), ours: avg(our), n: med.length };
+        x.target = x.med == null ? null : peak ? Math.max(x.med, x.top ?? x.hi ?? x.med) : off ? x.lo ?? x.med : x.med;
+        x.ratio = x.target && x.ours ? x.target / x.ours : null;  // how far our all-in price is from the target, this channel
+        ch[name] = x;
+      }
+      const rent = avg(nights.map(k => ours[h.id]?.[k]?.rent && avg(ours[h.id][k].rent)).filter(v => v != null));
+      const now = rent;  // our nightly rent now (Track base / Direct rate)
+      // Move our nightly rent by the same % as the gap to the target, averaged over the channels where we have both prices.
+      const ratios = CH.map(n => ch[n].ratio).filter(v => v != null), ratio = ratios.length ? avg(ratios) : null;
+      let sug = now != null && ratio != null ? now * ratio : null;
+      // where we sit now (Airbnb all-in vs the comps, else Direct)
+      const ref = ch.Airbnb.ours != null && ch.Airbnb.med != null ? ch.Airbnb : ch.Direct.ours != null && ch.Direct.med != null ? ch.Direct : null;
+      const where = !ref ? "—" : ref.ours < ref.lo ? "Lowest" : ref.ours > (ref.top ?? ref.hi) ? "Highest" : ref.ours > ref.hi ? "Upper" : ref.ours < ref.med * 0.95 ? "Lower-middle" : "Middle";
+      const chg = sug != null && now != null ? (sug / now - 1) * 100 : null;
+      const allBooked = now == null && CH.every(n => ch[n].ours == null);
+      let act = allBooked ? "Booked / no price" : sug == null ? "No comp prices" : chg >= 5 ? "Raise" : chg <= -5 ? "Lower" : "Hold";
+      if (act === "Lower" && peak && where !== "Highest") act = "Hold";  // never undercut a holiday / event week we're not already topping
+      if (act === "Hold") sug = now;
+      out.push({ home: h.label, homeId: h.id, a: w.a, b: w.b, pos, why: peak || off || "", ch, now: r5(now), sug: r5(sug), chg, act, where,
+        floor: state.set.owner_floor && sug != null && sug < +state.set.owner_floor });
+    }
+  }
+  return out;
+}
+function openReport() {
+  const rows = buildReport(), set = state.set, gen = new Date();
+  const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const m = v => v == null ? "—" : "$" + Math.round(v).toLocaleString();
+  const byHome = {}; for (const r of rows) (byHome[r.home] ||= []).push(r);
+  const summary = Object.entries(byHome).map(([home, rs]) => {
+    const c = a => rs.filter(r => r.act === a).length, chg = rs.map(r => r.chg).filter(v => v != null && Math.abs(v) >= 5);
+    return `<tr><td>${escH(home)}</td><td class="r">${c("Raise")}</td><td class="r">${c("Lower")}</td><td class="r">${c("Hold")}</td><td class="r">${chg.length ? (chg.reduce((a, b) => a + b, 0) / chg.length > 0 ? "+" : "") + Math.round(chg.reduce((a, b) => a + b, 0) / chg.length) + "%" : "—"}</td></tr>`; }).join("");
+  const cell = x => x.med == null ? '<td class="r muted">—</td><td class="r muted">—</td>' : `<td class="r">${m(x.med)}<div class="sm">${m(x.lo)}–${m(x.top ?? x.hi)}</div></td><td class="r">${m(x.ours)}</td>`;
+  const tables = Object.entries(byHome).map(([home, rs]) => `<h2>${escH(home)}</h2><table><thead><tr><th>Week</th><th>Position we want</th>
+    <th class="r">Airbnb comps<div class="sm">avg (low–top)</div></th><th class="r">Ours</th><th class="r">VRBO comps</th><th class="r">Ours</th><th class="r">Direct comps</th><th class="r">Ours</th>
+    <th>Where we sit</th><th class="r">Nightly rent now</th><th class="r">Suggested</th><th>Change</th></tr></thead><tbody>${rs.map(r => `<tr>
+    <td>${fd(r.a)} – ${fd(r.b)}</td><td>${r.pos}${r.why ? `<div class="sm">${escH(r.why)}</div>` : ""}</td>${cell(r.ch.Airbnb)}${cell(r.ch.VRBO)}${cell(r.ch.Direct)}
+    <td>${r.where}</td><td class="r">${m(r.now)}</td><td class="r"><b>${m(r.sug)}</b>${r.floor ? '<div class="sm warn">under owner floor</div>' : ""}</td>
+    <td class="${r.act === "Raise" ? "up" : r.act === "Lower" ? "down" : ""}">${r.act}${r.chg != null && r.act !== "Hold" ? ` ${r.chg > 0 ? "+" : ""}${Math.round(r.chg)}%` : ""}</td></tr>`).join("")}</tbody></table>`).join("");
+  const csvRows = [["Home", "Week start", "Week end", "Position", "Why", "Airbnb comp avg", "Airbnb comp low", "Airbnb comp top", "Our Airbnb", "VRBO comp avg", "Our VRBO", "Direct comp avg", "Our Direct", "Where we sit", "Nightly rent now", "Suggested nightly rent", "Action", "Change %"]]
+    .concat(rows.map(r => [r.home, r.a, r.b, r.pos, r.why, r.ch.Airbnb.med, r.ch.Airbnb.lo, r.ch.Airbnb.top, r.ch.Airbnb.ours, r.ch.VRBO.med, r.ch.VRBO.ours, r.ch.Direct.med, r.ch.Direct.ours, r.where, r.now, r.sug, r.act, r.chg]
+      .map(v => typeof v === "number" ? Math.round(v) : v ?? "")));
+  const csv = csvRows.map(r => r.map(v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(",")).join("\n");
+  const title = `Pricing report · ${set.name} · ${gen.toLocaleDateString()}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(title)}</title><style>
+    body{font:13px/1.45 Inter,system-ui,sans-serif;color:#1a1a1a;margin:24px;max-width:1300px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 6px}
+    table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid #e4e7df;padding:5px 6px;text-align:left;vertical-align:top}th{color:#7a8290;font-weight:500}
+    .r{text-align:right}.sm{font-size:11px;color:#7a8290}.muted{color:#7a8290}.up{color:#15803d;font-weight:600}.down{color:#c2410c;font-weight:600}.warn{color:#c2410c}
+    .bar{display:flex;gap:8px;margin:10px 0}.bar button{padding:7px 12px;border:1px solid #ccc;border-radius:999px;background:#fff;cursor:pointer;font:inherit}
+    .note{background:#f6f7f4;border-radius:8px;padding:10px 12px;margin:10px 0}@media print{.bar{display:none}body{margin:10mm}h2{break-before:auto}tr{break-inside:avoid}}
+    </style></head><body><h1>${escH(title)}</h1><div class="sm">Next 180 nights (${fd(rows[0]?.a || iso(gen))} – ${fd(rows[rows.length - 1]?.b || iso(gen))}) · generated ${gen.toLocaleString()} · <b>ESTIMATE</b></div>
+    <div class="bar"><button onclick="window.print()">Print / save as PDF</button><button id="dl">Download CSV</button></div>
+    <div class="note"><b>How we position (Moose Management rule):</b> middle of the comp pack most of the year, never the lowest; the low end is OK in the off-season; the top of the pack on holidays and events.
+    <br><b>Prices:</b> comp and our columns are all-in per night (cleaning, fees and tax spread across the stay; Airbnb and VRBO listing totals + 13.12% Summit County tax seen at checkout). "Avg" is the comps' median, "low–top" is their 25th–90th percentile.
+    <br><b>Targets:</b> middle of the pack = comp median; off-season = comp 25th percentile (low end); holiday/event = comp 90th percentile (top of the pack).
+    <br><b>Suggested</b> nightly rent = our nightly rent now (Track base rate) moved by the same % as the gap between our all-in price and the target, averaged over Airbnb, VRBO and Direct where we have both prices. Our cleaning is a fixed amount, so the rent change needed to fully close the gap is a bit larger than shown. Changes under 5% show as Hold. A holiday/event week is never lowered unless we're already the highest. "Booked / no price" = no open stays for that home that week.
+    <br><b>Sources:</b> comps from the Rates Desk (Supabase): Airbnb from AirROI calendars and Airbnb checkout pages, VRBO from KeyData comp-set exports, Direct from each manager's booking site; ours from the Track API (read-only). Holidays/events: the Desk's peak list and our high-demand notes. Off-season dates: Park City Mountain opening Nov 20, 2026 (KPCW); April closing is an ESTIMATE.</div>
+    <h2>Summary (weeks)</h2><table><thead><tr><th>Home</th><th class="r">Raise</th><th class="r">Lower</th><th class="r">Hold</th><th class="r">Avg change</th></tr></thead><tbody>${summary}</tbody></table>
+    ${tables}<script>document.getElementById("dl").onclick=()=>{const b=new Blob([${JSON.stringify(csv)}],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=${JSON.stringify(`pricing-report-${set.id}-${iso(gen)}.csv`)};a.click();};<\/script></body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { alert("Your browser blocked the report window. Allow pop-ups for this site and try again."); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+$("ours").addEventListener("click", e => { if (e.target.closest("#reportBtn")) openReport(); });
 
 async function loadReqs() {
   const { data } = await sb.from("comp_requests").select("*").eq("set_id", state.set.id).in("status", ["pending","enriched","error"]).order("id", { ascending: false });
