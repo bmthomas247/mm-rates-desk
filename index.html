@@ -201,6 +201,17 @@ async function boot() {
   load(sets.some(s => s.id === last) ? last : sets[0].id);
 }
 
+// Supabase sends at most 1,000 rows per request: fetch every page (in parallel after the first) so nothing past
+// the first ~1,000 stays gets cut off (fixed 2026-10-13: charts were stopping around Nov 9).
+async function allRows(q, size = 1000) {
+  const first = await q().range(0, size - 1);
+  if (first.error || !first.count || first.count <= size) return first;
+  const pages = [];
+  for (let from = size; from < first.count; from += size) pages.push(q().range(from, from + size - 1));
+  const rest = await Promise.all(pages);
+  const bad = rest.find(r => r.error);
+  return { data: first.data.concat(...rest.map(r => r.data || [])), error: bad?.error || null, count: first.count };
+}
 async function load(setId) {
   state.set = state.sets.find(s => s.id === setId);
   try { localStorage.setItem("mmSet", setId); } catch (e) {}
@@ -208,13 +219,14 @@ async function load(setId) {
   const today = new Date().toISOString().slice(0, 10);
   const [c, k, cal] = await Promise.all([
     sb.from("comps").select("*,comp_links(*)").eq("set_id", setId).eq("active", true),
-    sb.from("latest_checks").select("*").eq("set_id", setId).gte("check_in", today).order("check_in").limit(5000),
+    allRows(() => sb.from("latest_checks").select("*", { count: "exact" }).eq("set_id", setId).gte("check_in", today)
+      .order("check_in").order("comp_id").order("channel").order("check_out")),
     sb.from("latest_calendar").select("*").eq("set_id", setId)]);
   // One comp set: every comp that's been added counts the same (no Primary/Secondary split; Brandon 2026-10-09).
   const one = r => r.tier === "Ours" ? r : { ...r, tier: "Primary" };
   state.comps = (c.data || []).map(one); state.allChecks = state.checks = (k.data || []).map(one); state.cal = (cal.data || []).map(one);
   const oursIds = state.comps.filter(x => x.tier === "Ours").map(x => x.id);
-  const bk = oursIds.length ? await sb.from("our_bookings").select("*").in("comp_id", oursIds) : { data: [] };
+  const bk = oursIds.length ? await allRows(() => sb.from("our_bookings").select("*", { count: "exact" }).in("comp_id", oursIds).order("comp_id").order("reservation_id")) : { data: [] };
   state.bookings = bk.data || []; state.bookingsLoaded = !bk.error && state.bookings.length > 0;
   render(); loadReqs();
 }
