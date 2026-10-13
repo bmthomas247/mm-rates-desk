@@ -83,6 +83,18 @@ main .card>h2:first-child::before,#search>div:first-child>h2::before{content:"\2
 main .card.collapsed>h2:first-child::before,#search.collapsed>div:first-child>h2::before{transform:rotate(-90deg)}
 main .card.collapsed>*:not(:first-child){display:none}
 main .card.collapsed>h2:first-child{margin-bottom:0}
+.mkbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.mkbar h2{margin:0 6px 0 0}
+.mkchip{border:1px solid var(--line);background:var(--card);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px}
+.mkchip.on{border-color:var(--ink2);color:var(--ink);font-weight:600}.mkchip.ev.on{background:var(--amberbg)}.mkchip.sn.on{background:#e3effa}.mkchip.nt.on{background:#efe8fb}
+@media (prefers-color-scheme:dark){.mkchip.sn.on{background:#16283a}.mkchip.nt.on{background:#271f38}}
+.mkchk{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2)}.mkchk input{width:auto}
+.mkday{display:grid;grid-template-columns:96px 1fr;gap:4px 12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.mkday .d{color:var(--muted);font-size:12px;padding-top:1px}.mkitem{margin:1px 0}.mkitem .src{font-size:11px}
+.mki{display:inline-block;width:18px;text-align:center}.mkev{color:var(--amber)}.mksn{color:#3b82c4}.mknt{color:#7c5cc4}
+.mkform{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}.mkform label{font-size:12px;color:var(--muted)}
+.mkform select,.mkform textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
+.day .mkd{position:absolute;top:2px;left:calc(50% - 22px);font-size:9px;line-height:1;letter-spacing:-1px}
+.imp-high{font-weight:700}.pill.hi{background:var(--redbg);color:var(--red)}
 </style>
 </head>
 <body>
@@ -95,6 +107,26 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
 </div>
 
 <main id="app" class="hidden">
+  <div class="card" id="market">
+    <div class="mkbar"><h2>Local market</h2>
+      <button class="mkchip ev" data-mk="ev"><span class="mki mkev">⚑</span>Events</button>
+      <button class="mkchip sn" data-mk="snow"><span class="mki mksn">❄</span>Snow forecast</button>
+      <button class="mkchip nt" data-mk="notes"><span class="mki mknt">✎</span>Our notes</button>
+      <label class="mkchk"><input type="checkbox" id="mkSlc"> Include Salt Lake events</label>
+      <span class="sp"></span><button class="tab" id="mkList">Show list</button> <button class="tab on" id="mkAddBtn">+ Add event / news</button></div>
+    <p class="small muted" id="mkInfo" style="margin:8px 0 0"></p>
+    <div id="mkAdd" class="hidden"><div class="mkform">
+      <div><label>What's happening *</label><input id="mkTitle" placeholder="e.g. World Cup aerials at Deer Valley"></div>
+      <div><label>Starts *</label><input id="mkStart" type="date"></div>
+      <div><label>Ends</label><input id="mkEnd" type="date"></div>
+      <div><label>Type</label><select id="mkCat"><option>Event</option><option>News</option><option>Ski race / competition</option><option>Concert / show</option><option>Conference / group</option><option>School break / holiday</option><option>Road / construction</option><option>Resort / lift news</option><option>Other</option></select></div>
+      <div><label>Expected demand</label><select id="mkImp"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></div>
+      <div style="grid-column:1/-1"><label>Source link (news article, event page) *</label><input id="mkUrl" type="url" placeholder="https://..."></div>
+      <div style="grid-column:1/-1"><label>Notes</label><textarea id="mkNotes" rows="2" placeholder="What we're hearing, who told us, why it matters for pricing"></textarea></div>
+      <div style="grid-column:1/-1"><label class="mkchk"><input type="checkbox" id="mkNoLink"> No link — I'm Kim or Brandon and I approve adding this without a source</label></div>
+    </div><div style="display:flex;gap:8px;margin-top:8px"><button class="tab on" id="mkSave">Save</button><button class="tab" id="mkCancel">Cancel</button><span id="mkMsg" class="small muted" style="align-self:center"></span></div></div>
+    <div id="mkPanel" class="hidden" style="margin-top:8px"></div>
+  </div>
   <div class="tabs" id="tabs"></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
@@ -191,6 +223,7 @@ async function boot() {
   const cx = n => split(n)[0].replace(/^the\s+/i, "").toLowerCase();
   sets.sort((a, b) => cx(a.name).localeCompare(cx(b.name)) || (([x1, y1], [x2, y2]) => x1 - x2 || y1 - y2)(typeKey(split(a.name)[1]), typeKey(split(b.name)[1])));
   state.sets = sets;
+  loadMarket();
   const groups = [];
   for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
     if (g && g.c === c) g.items.push([s, t]); else groups.push({ c, items: [[s, t]] }); }
@@ -334,7 +367,7 @@ function renderDaily(ch) {
   if (!pts.some(p => p.ours != null || p.med != null)) {
     el.innerHTML = `<p class="muted small" style="padding:18px 0">${ch === "VRBO" ? "VRBO prices aren't pulled automatically yet (VRBO hides prices from automated browsers)." : "No priced nights yet for this channel."}</p>`; return;
   }
-  const W = 1000, H = 260, L = 52, R = 12, T = 12, B = 34;
+  const W = 1000, H = 270, L = 52, R = 12, T = 32, B = 34;
   const maxV = Math.max(...pts.flatMap(p => [p.ours, p.med, p.p75]).filter(v => v != null)) * 1.1;
   const step = maxV > 1500 ? 500 : maxV > 600 ? 200 : 100, top = Math.ceil(maxV / step) * step;
   const x = i => L + (W - L - R) * (N === 1 ? 0.5 : i / M), y = v => T + (H - T - B) * (1 - v / top);
@@ -351,7 +384,7 @@ function renderDaily(ch) {
   const op = pts.map((q, i) => q.ours != null ? [x(i), y(q.ours)] : null).filter(Boolean);
   const area = op.length > 1 ? `<path d="M${op[0][0]},${y(0)}L${op.map(p => p.join(",")).join("L")}L${op[op.length - 1][0]},${y(0)}Z" fill="var(--teal)" opacity=".16"/>` : "";
   const dots = pts.map((p, i) => (p.ours != null ? `<circle cx="${x(i)}" cy="${y(p.ours)}" r="2.6" fill="var(--teal)"/>` : "") + (p.med != null ? `<circle cx="${x(i)}" cy="${y(p.med)}" r="2" fill="var(--ink)"/>` : "")).join("");
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ch} all-in price per night, ours vs comps">${g}${band}${area}
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ch} all-in price per night, ours vs comps">${g}${mkTicks(pts, x, T)}${band}${area}
     <path d="${line("p75")}" fill="none" stroke="var(--red)" stroke-width="1.4" stroke-dasharray="3 3" stroke-linejoin="round"/>
     <path d="${line("p25")}" fill="none" stroke="#3b82c4" stroke-width="1.4" stroke-dasharray="3 3" stroke-linejoin="round"/>
     <path d="${line("med")}" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-dasharray="6 4" stroke-linejoin="round"/>
@@ -364,7 +397,7 @@ function renderDaily(ch) {
     const i = Math.max(0, Math.min(N - 1, Math.round((sx - L) / (W - L - R) * M))), p = pts[i];
     xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.style.display = "";
     const gap = p.ours != null && p.med ? Math.round((p.ours / p.med - 1) * 100) : null;
-    tip.innerHTML = `<b>${ch} · ${p.d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b><br>Ours: ${fmt(p.ours)}${gap != null ? ` <span class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">(${gap > 0 ? "+" : ""}${gap}%)</span>` : ""}<br>Comp high: ${fmt(p.p75)}<br>Comp average: ${fmt(p.med)}<br>Comp low: ${fmt(p.p25)}<br><span class="muted">${p.n} comps priced · all-in per night</span>`;
+    tip.innerHTML = `<b>${ch} · ${p.d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b><br>Ours: ${fmt(p.ours)}${gap != null ? ` <span class="${gap >= 15 ? "up" : gap <= -15 ? "down" : ""}">(${gap > 0 ? "+" : ""}${gap}%)</span>` : ""}<br>Comp high: ${fmt(p.p75)}<br>Comp average: ${fmt(p.med)}<br>Comp low: ${fmt(p.p25)}<br><span class="muted">${p.n} comps priced · all-in per night</span>${mkTip(p.k)}`;
     tip.style.display = "block"; const px = (x(i) / W) * r.width; tip.style.left = Math.min(px + 12, r.width - 200) + "px"; tip.style.top = "10px";
   };
   hit.onmouseleave = () => { tip.style.display = "none"; xh.style.display = "none"; };
@@ -542,7 +575,7 @@ function homeDetail(homeId) {
       for (let d = 1; d <= days; d++) { const k = iso(new Date(y, m, d, 12)), past = k < today, bk = hb.night[k];
         const comp = Object.values(ns[k] || {}).flatMap(o => Object.values(o.comps).map(v => avg(v))), cm = comp.length ? avg(comp) : null;
         const cls = ["day", past && "past", k === today && "today", R.a && R.b && k > R.a && k < R.b && "inr", k === R.a && "start", (k === R.b || (k === R.a && !R.b)) && "end"].filter(Boolean).join(" ");
-        h += `<button class="${cls}" data-hk="${k}" ${past ? "disabled" : ""} title="${bk ? bk.label : "Open"}${cm ? " · comps " + fmt(cm) + "/night all-in" : ""}" style="${bk ? `box-shadow:inset 0 -4px 0 ${colr[bk.kind]}` : ""}"><span>${d}</span><small>${cm ? "$" + Math.round(cm) : "&nbsp;"}</small></button>`; }
+        h += `<button class="${cls}" data-hk="${k}" ${past ? "disabled" : ""} title="${bk ? bk.label : "Open"}${cm ? " · comps " + fmt(cm) + "/night all-in" : ""}${past ? "" : escH(mkTitle(k))}" style="${bk ? `box-shadow:inset 0 -4px 0 ${colr[bk.kind]}` : ""}">${past ? "" : `<span class="mkd">${mkIcons(k)}</span>`}<span>${d}</span><small>${cm ? "$" + Math.round(cm) : "&nbsp;"}</small></button>`; }
       return h + "</div>"; };
     const m1 = hstate.m, m2 = new Date(m1.getFullYear(), m1.getMonth() + 1, 1, 12), nm = m => m.toLocaleDateString(undefined, { month: "long", year: "numeric" });
     $("hcal").innerHTML = `<div><div class="calhead"><button class="navbtn" id="hprev">‹</button><b>${nm(m1)}</b><span style="width:34px"></span></div>${month(m1)}</div><div><div class="calhead"><span style="width:34px"></span><b>${nm(m2)}</b><button class="navbtn" id="hnext">›</button></div>${month(m2)}</div>`;
@@ -627,7 +660,7 @@ function renderPicker() {
       const k = iso(new Date(y, m, d, 12)), past = k < today, inf = past ? {} : dayInfo(k);
       const cls = ["day", past && "past", k === today && "today", R.ci && R.co && k > R.ci && k < R.co && "inr",
         k === R.ci && "start", (k === R.co || (k === R.ci && !R.co)) && "end", inf.blocked >= .6 && "hot", flagNight[k]].filter(Boolean).join(" ");
-      h += `<button class="${cls}" data-k="${k}" ${past ? "disabled" : ""} title="${inf.med ? "Avg comp rate " + fmt(inf.med) + "/night all-in (" + inf.n + " comps priced)" : "No comp prices for this night yet"}${inf.blocked != null ? " · " + Math.round(inf.blocked * 100) + "% of comps blocked" : ""}"><span>${d}</span><small>${inf.med ? "$" + Math.round(inf.med) : "&nbsp;"}</small></button>`;
+      h += `<button class="${cls}" data-k="${k}" ${past ? "disabled" : ""} title="${inf.med ? "Avg comp rate " + fmt(inf.med) + "/night all-in (" + inf.n + " comps priced)" : "No comp prices for this night yet"}${inf.blocked != null ? " · " + Math.round(inf.blocked * 100) + "% of comps blocked" : ""}${past ? "" : escH(mkTitle(k))}">${past ? "" : `<span class="mkd">${mkIcons(k)}</span>`}<span>${d}</span><small>${inf.med ? "$" + Math.round(inf.med) : "&nbsp;"}</small></button>`;
     }
     return h + "</div>";
   };
@@ -786,6 +819,7 @@ function renderSiteFees() {
 }
 function render() {
   state.checks = state.allChecks || state.checks;
+  if (state.mk?.loaded && !$("mkPanel").classList.contains("hidden")) renderMarketList();
   renderPicker();
   // The picked dates drive the rest of the page: keep only stays that overlap them.
   const RN0 = rangeNights();
@@ -834,6 +868,105 @@ function render() {
     if (error) alert(error.message); else load(state.set.id);
   };
 }
+
+// ---------- Local market: events (Ticketmaster), snow forecast (NWS), our notes (2026-10-13) ----------
+// Every item keeps its source link + capture date. Our notes need a link unless Kim or Brandon approves without one.
+const MK_DEF = { ev: true, snow: true, notes: true, slc: false };
+let MK = { ...MK_DEF }; try { Object.assign(MK, JSON.parse(localStorage.getItem("mmMarket") || "{}")); } catch (e) {}
+const escH = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mkSave = () => { try { localStorage.setItem("mmMarket", JSON.stringify(MK)); } catch (e) {} };
+state.mk = { events: [], weather: [], loaded: false };
+async function loadMarket() {
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  const [ev, wx] = await Promise.all([
+    allRows(() => sb.from("market_events").select("*", { count: "exact" }).eq("active", true).gte("start_date", addD(today, -14)).order("start_date").order("id")),
+    sb.from("latest_weather").select("*").gte("day", today).order("day")]);
+  state.mk = { events: (ev.data || []).filter(e => (e.end_date || e.start_date) >= today), weather: wx.data || [], loaded: true, err: ev.error?.message || wx.error?.message };
+  renderMarketBar(); if (state.set) render();
+}
+// Items for one night, honoring the toggles.
+function mkFor(k) {
+  const o = { ev: [], notes: [], snow: null };
+  if (!state.mk.loaded) return o;
+  for (const e of state.mk.events) {
+    if (k < e.start_date || k > (e.end_date || e.start_date)) continue;
+    if (e.source === "manual") { if (MK.notes) o.notes.push(e); }
+    else if (MK.ev && (MK.slc || e.area === "Park City area")) o.ev.push(e);
+  }
+  if (MK.snow) { const w = state.mk.weather.filter(x => x.day === k); const up = w.find(x => /Mountain/.test(x.location)) || w[0];
+    if (up && up.snow_in > 0) o.snow = { in: +up.snow_in, loc: up.location, url: up.url, cap: up.captured_at, town: w.find(x => /town/.test(x.location)) }; }
+  return o;
+}
+const mkIcons = k => { const o = mkFor(k); return (o.ev.length ? "⚑" : "") + (o.snow && o.snow.in >= 1 ? "❄" : "") + (o.notes.length ? "✎" : ""); };
+const mkTitle = k => { const o = mkFor(k), t = [];
+  if (o.snow) t.push(`Snow ${o.snow.in}" (${o.snow.loc})`); o.notes.forEach(e => t.push("Note: " + e.title)); o.ev.slice(0, 4).forEach(e => t.push(e.title + (e.venue ? " @ " + e.venue : "")));
+  if (o.ev.length > 4) t.push(`+${o.ev.length - 4} more events`); return t.length ? " · " + t.join(" · ") : ""; };
+function mkTip(k) { const o = mkFor(k), t = [];
+  if (o.snow) t.push(`<span class="mksn">❄</span> ${o.snow.in}" snow forecast <span class="muted">(NWS)</span>`);
+  o.notes.forEach(e => t.push(`<span class="mknt">✎</span> ${escH(e.title)}${e.impact === "high" ? " <b>(high)</b>" : ""}`));
+  o.ev.slice(0, 3).forEach(e => t.push(`<span class="mkev">⚑</span> ${escH(e.title.slice(0, 48))}`)); if (o.ev.length > 3) t.push(`<span class="muted">+${o.ev.length - 3} more events</span>`);
+  return t.length ? "<br>" + t.join("<br>") : ""; }
+// Ticks along the top of a price chart.
+function mkTicks(pts, x, T) {
+  let s = "";
+  pts.forEach((p, i) => { const o = mkFor(p.k);
+    if (o.ev.length) s += `<path d="M${x(i) - 4},${T - 15}L${x(i) + 4},${T - 15}L${x(i)},${T - 8}Z" fill="var(--amber)"><title>${escH(mkTitle(p.k).slice(3))}</title></path>`;
+    if (o.notes.length) s += `<rect x="${x(i) - 3.5}" y="${T - 26}" width="7" height="7" rx="1.5" fill="#7c5cc4"><title>${escH(o.notes.map(e => e.title).join(" · "))}</title></rect>`;
+    if (o.snow && o.snow.in >= 0.5) s += `<circle cx="${x(i)}" cy="${T - 4}" r="${Math.min(2 + o.snow.in * 0.7, 7)}" fill="#3b82c4" opacity=".85"><title>${o.snow.in}" snow forecast (${escH(o.snow.loc)}, NWS)</title></circle>`;
+  });
+  return s;
+}
+function renderMarketBar() {
+  document.querySelectorAll("#market .mkchip").forEach(b => b.classList.toggle("on", !!MK[b.dataset.mk]));
+  $("mkSlc").checked = !!MK.slc;
+  const m = state.mk, today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, 30);
+  const pc = m.events.filter(e => e.source !== "manual" && e.area === "Park City area" && e.start_date <= end).length;
+  const nt = m.events.filter(e => e.source === "manual").length;
+  const sn = m.weather.filter(w => /Mountain/.test(w.location) && w.snow_in >= 1);
+  const wcap = m.weather[0]?.captured_at, ecap = m.events.filter(e => e.source !== "manual").map(e => e.captured_at).sort().pop();
+  $("mkInfo").innerHTML = m.err ? `<span class="up">${escH(m.err)}</span>` : !m.loaded ? "Loading…" :
+    `${pc} Park City-area events in the next 30 days · ${sn.length ? sn.map(w => `${w.day.slice(5)}: ${w.snow_in}"`).join(", ") + " snow forecast" : "no snow ≥1\" in the forecast"} · ${nt} of our notes. ` +
+    `<span class="muted">Sources: <a href="https://www.ticketmaster.com/" target="_blank" rel="noopener">Ticketmaster</a>${ecap ? " (" + new Date(ecap).toLocaleDateString() + ")" : ""}, <a href="https://forecast.weather.gov/MapClick.php?lat=40.587&lon=-111.565" target="_blank" rel="noopener">NWS</a>${wcap ? " (" + new Date(wcap).toLocaleString() + ")" : ""}. Ticks show on the calendar and charts.</span>`;
+  if (!$("mkPanel").classList.contains("hidden")) renderMarketList();
+}
+function renderMarketList() {
+  const R = state.range, today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  const a = R?.ci || today, b = R?.co ? addD(R.co, -1) : addD(today, 45);
+  let h = `<p class="small muted" style="margin:0 0 4px">${R?.co ? `Your picked dates ${a} → ${R.co}` : `Next 45 days`}${MK.slc ? "" : " · Park City-area events only"}</p>`;
+  for (let k = a; k <= b; k = addD(k, 1)) {
+    const o = mkFor(k); if (!o.ev.length && !o.notes.length && !(o.snow && o.snow.in >= 0.5)) continue;
+    const items = [];
+    if (o.snow && o.snow.in >= 0.5) items.push(`<div class="mkitem"><span class="mki mksn">❄</span>${o.snow.in}" snow forecast at ${escH(o.snow.loc)}${o.snow.town ? ` · town ${o.snow.town.snow_in ?? 0}", ${o.snow.town.high_f ?? "—"}°/${o.snow.town.low_f ?? "—"}°` : ""} <a class="src" href="${escH(o.snow.url)}" target="_blank" rel="noopener">NWS</a> <span class="muted src">${new Date(o.snow.cap).toLocaleString()}</span></div>`);
+    o.notes.forEach(e => items.push(`<div class="mkitem"><span class="mki mknt">✎</span><b class="${e.impact === "high" ? "imp-high" : ""}">${escH(e.title)}</b> <span class="pill ${e.impact === "high" ? "hi" : ""}">${escH(e.category || "Note")} · ${escH(e.impact || "medium")}</span>${e.end_date && e.end_date !== e.start_date ? ` <span class="muted small">${e.start_date} → ${e.end_date}</span>` : ""}
+      ${e.notes ? `<div class="muted small">${escH(e.notes)}</div>` : ""}<div class="src">${e.url ? `<a href="${escH(e.url)}" target="_blank" rel="noopener">source</a>` : `<span class="muted">no link · approved by ${escH(e.approved_by)}</span>`} <span class="muted">added by ${escH(e.created_by)}, ${new Date(e.captured_at).toLocaleDateString()}</span> <button class="xbtn" data-hide="${e.id}" title="Hide this note">×</button></div></div>`));
+    o.ev.forEach(e => items.push(`<div class="mkitem"><span class="mki mkev">⚑</span>${escH(e.title)} <span class="muted small">${escH([e.venue, e.city].filter(Boolean).join(", "))}${e.distance_mi != null ? " · " + e.distance_mi + " mi" : ""}${e.start_time ? " · " + e.start_time.slice(0, 5) : ""}${e.category ? " · " + escH(e.category) : ""}</span> <a class="src" href="${escH(e.url)}" target="_blank" rel="noopener">Ticketmaster</a></div>`));
+    h += `<div class="mkday"><div class="d">${new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div><div>${items.join("")}</div></div>`;
+  }
+  $("mkPanel").innerHTML = h;
+}
+$("market").onclick = async e => {
+  const c = e.target.closest(".mkchip"); if (c) { MK[c.dataset.mk] = !MK[c.dataset.mk]; mkSave(); renderMarketBar(); if (state.set) render(); return; }
+  const hb = e.target.closest("button[data-hide]");
+  if (hb) { if (!confirm("Hide this note from the Desk? It stays in the history.")) return;
+    const { error } = await sb.rpc("hide_market_event", { eid: +hb.dataset.hide }); if (error) alert(error.message); else loadMarket(); }
+};
+$("mkSlc").onchange = () => { MK.slc = $("mkSlc").checked; mkSave(); renderMarketBar(); if (state.set) render(); };
+$("mkList").onclick = () => { const p = $("mkPanel"); p.classList.toggle("hidden"); $("mkList").textContent = p.classList.contains("hidden") ? "Show list" : "Hide list"; if (!p.classList.contains("hidden")) renderMarketList(); };
+$("mkAddBtn").onclick = () => { $("mkAdd").classList.toggle("hidden"); if (!$("mkStart").value && state.range?.ci) { $("mkStart").value = state.range.ci; if (state.range.co) $("mkEnd").value = addD(state.range.co, -1); } };
+$("mkCancel").onclick = () => $("mkAdd").classList.add("hidden");
+$("mkSave").onclick = async () => {
+  const title = $("mkTitle").value.trim(), start = $("mkStart").value, end = $("mkEnd").value || null, url = $("mkUrl").value.trim(), noLink = $("mkNoLink").checked;
+  if (!title || !start) { $("mkMsg").textContent = "Add what's happening and a start date."; return; }
+  if (end && end < start) { $("mkMsg").textContent = "End date is before the start date."; return; }
+  if (url && !/^https?:\/\//.test(url)) { $("mkMsg").textContent = "The link needs to start with https://"; return; }
+  if (!url && !noLink) { $("mkMsg").textContent = "Add a source link, or tick the box if you're Kim or Brandon approving it without one."; return; }
+  const { data: { session } } = await sb.auth.getSession();
+  const row = { source: "manual", title, start_date: start, end_date: end, category: $("mkCat").value, impact: $("mkImp").value, url: url || null,
+    notes: $("mkNotes").value.trim() || null, approved_by: url ? null : session.user.email, created_by: session.user.email };
+  const { error } = await sb.from("market_events").insert(row);
+  $("mkMsg").textContent = error ? error.message : "Saved.";
+  if (!error) { ["mkTitle", "mkStart", "mkEnd", "mkUrl", "mkNotes"].forEach(i => $(i).value = ""); $("mkNoLink").checked = false; $("mkAdd").classList.add("hidden"); loadMarket(); }
+};
 
 async function loadReqs() {
   const { data } = await sb.from("comp_requests").select("*").eq("set_id", state.set.id).in("status", ["pending","enriched","error"]).order("id", { ascending: false });
