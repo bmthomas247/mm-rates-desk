@@ -152,7 +152,8 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div id="directFees"></div>
     <div id="siteFeesDirect"></div>
   </div>
-  <div class="card" id="secVRBO"><h2>VRBO</h2>
+  <div class="card" id="secVRBO"><h2>VRBO <span class="pill">ESTIMATE</span></h2>
+    <p class="small muted">Comps: KeyData export nightly prices + that home's Airbnb cleaning (or its set's median Airbnb cleaning) + 13.12% tax; VRBO's guest service fee isn't included. Ours: Track VRBO price. Click a price for its source.</p>
     <p class="small muted">All-in price per night for the whole stay (cleaning, fees and taxes spread across the nights), <b class="scopeLbl">next 180 nights</b>. Hover any night. Dots are nights we have a price for; lines connect them.</p>
     <div class="legend"><span><i style="background:var(--teal)"></i>Ours</span><span><i style="background:var(--red)"></i>Comp high</span><span><i style="background:var(--ink)"></i>Comp average</span><span><i style="background:#3b82c4"></i>Comp low</span><span><i style="background:var(--line);height:10px"></i>Comp range</span></div>
     <div class="dchart" id="dailyVRBO"></div>
