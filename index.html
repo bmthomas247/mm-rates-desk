@@ -398,7 +398,7 @@ function renderDaily(ch) {
     const d = new Date(start); d.setDate(d.getDate() + i); const k = iso(d); const n = nights[k];
     const comp = n ? Object.values(n.comps).map(v => v.reduce((a, b) => a + b, 0) / v.length) : [];
     pts.push({ k, d, ours: n?.ours.length ? n.ours.reduce((a, b) => a + b, 0) / n.ours.length : null,
-      med: comp.length ? comp.reduce((a, b) => a + b, 0) / comp.length : null, p25: comp.length >= 2 ? Math.min(...comp) : null, p75: comp.length >= 2 ? Math.max(...comp) : null, n: comp.length });
+      med: comp.length >= 2 ? comp.reduce((a, b) => a + b, 0) / comp.length : null, p25: comp.length >= 2 ? Math.min(...comp) : null, p75: comp.length >= 2 ? Math.max(...comp) : null, n: comp.length });
   }
   if (!pts.some(p => p.ours != null || p.med != null)) {
     el.innerHTML = `<p class="muted small" style="padding:18px 0">${ch === "VRBO" ? "VRBO prices aren't pulled automatically yet (VRBO hides prices from automated browsers)." : "No priced nights yet for this channel."}</p>`; return;
@@ -1118,11 +1118,16 @@ function openReport() {
     <br><b>Sources:</b> comps from the Rates Desk (Supabase): Airbnb from AirROI calendars and Airbnb checkout pages, VRBO from KeyData comp-set exports, Direct from each manager's booking site; ours from the Track API (read-only). Holidays/events: the Desk's peak list and our high-demand notes. Off-season dates: Park City Mountain opening Nov 20, 2026 (KPCW); April closing is an ESTIMATE.</div>
     <h2>Summary (weeks)</h2><table><thead><tr><th>Home</th><th class="r">Raise</th><th class="r">Lower</th><th class="r">Hold</th><th class="r">Avg change</th></tr></thead><tbody>${summary}</tbody></table>
     ${tables}<script>document.getElementById("dl").onclick=()=>{const b=new Blob([${JSON.stringify(csv)}],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=${JSON.stringify(`pricing-report-${set.id}-${iso(gen)}.csv`)};a.click();};<\/script></body></html>`;
-  const w = window.open("", "_blank");
-  if (!w) { alert("Your browser blocked the report window. Allow pop-ups for this site and try again."); return; }
-  w.document.open(); w.document.write(html); w.document.close();
+  // Show it right on the Desk (pop-up windows get blocked), with "open in a new tab" and CSV download links. 2026-10-13
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" })), csvUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  $("dlgbody").innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 40px 8px 0"><b>${escH(title)}</b><span class="sp"></span>
+    <a class="tab" href="${url}" target="_blank" rel="noopener">Open in a new tab (print / PDF)</a> <a class="tab on" href="${csvUrl}" download="pricing-report-${set.id}-${iso(gen)}.csv">Download CSV</a></div>
+    <iframe id="rptFrame" title="Pricing report" style="width:100%;height:75vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>`;
+  $("rptFrame").srcdoc = html;
+  $("dlg").showModal();
 }
-$("ours").addEventListener("click", e => { if (e.target.closest("#reportBtn")) openReport(); });
+$("ours").addEventListener("click", e => { if (!e.target.closest("#reportBtn")) return; e.stopPropagation();
+  try { openReport(); } catch (err) { alert("The report couldn't be built: " + err.message); console.error(err); } });
 
 async function loadReqs() {
   const { data } = await sb.from("comp_requests").select("*").eq("set_id", state.set.id).in("status", ["pending","enriched","error"]).order("id", { ascending: false });
