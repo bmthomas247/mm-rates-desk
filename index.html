@@ -117,6 +117,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <p class="small muted" id="calHelp">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
     <p class="small" id="flagLegend"></p>
     <div class="cal2" id="cal2"></div>
+    <div id="rangeMk"></div>
     <div id="results"></div>
   </div>
   <div class="card" id="ours"></div>
@@ -969,7 +970,7 @@ function renderSiteFees() {
 function render() {
   state.checks = state.allChecks || state.checks;
   if (state.mk?.loaded && !$("mkPanel").classList.contains("hidden")) renderMarketList();
-  renderPicker();
+  renderPicker(); renderRangeMk();
   // The picked dates drive the rest of the page: keep only stays that overlap them.
   const RN0 = rangeNights();
   if (RN0) state.checks = state.allChecks.filter(r => r.check_in < state.range.co && r.check_out > state.range.ci);
@@ -1092,6 +1093,29 @@ function renderHotels() {
       rows.map(r => `<tr${r.type && r.type !== "hotel" ? ' class="muted"' : ""}><td>${r.link ? `<a href="${escH(r.link)}" target="_blank" rel="noopener">${escH(r.name)}</a>` : escH(r.name)}${r.type && r.type !== "hotel" ? ` <span class="pill">${escH(r.type)}</span>` : ""}</td><td>${escH(r.area)}</td><td>${r.hotel_class ? r.hotel_class + "★" : "—"} · ${r.rating ?? "—"}${r.reviews ? ` <span class="muted small">(${r.reviews})</span>` : ""}</td><td>${fmt(r.rate_night_pre_tax)}</td><td><b>${fmt(r.rate_night)}</b></td><td>${escH(r.cheapest_source || "—")}</td></tr>`).join("") +
       `</table></div><p class="small muted">Source: <a href="${escH(rows[0]?.search_url || "https://www.google.com/travel/hotels")}" target="_blank" rel="noopener">Google Hotels search</a>, captured ${rows[0] ? new Date(rows[0].captured_at).toLocaleString() : "—"}.</p>`;
   };
+}
+// "What's happening these dates" (Brandon 2026-10-14): when dates are picked, explain peaks from the Local market data,
+// whatever the market toggles are set to. Sources are the same as the Local market section.
+function renderRangeMk() {
+  const el = $("rangeMk"); if (!el) return; const R = state.range;
+  if (!R?.co || !state.mk?.loaded) { el.innerHTML = ""; return; }
+  const keep = { ...MK }; Object.assign(MK, { ev: true, snow: true, notes: true, hol: true, hotel: true });
+  const hol = new Set(), ev = new Map(), notes = new Map(), snow = [], hot = [];
+  for (let k = R.ci; k < R.co; k = addD(k, 1)) { const o = mkFor(k);
+    o.hol.forEach(h => hol.add(h)); o.ev.forEach(e => ev.set(e.title, e)); o.notes.forEach(e => notes.set(e.title, e));
+    if (o.snow && o.snow.in >= 1) snow.push(`${k.slice(5)}: ${o.snow.in}"`); o.hotel.filter(h => h.area === "Park City").forEach(h => hot.push(h)); }
+  Object.assign(MK, keep);
+  const allPc = (state.mk.hotels || []).filter(h => h.area === "Park City"), typ = median(allPc.map(h => +h.median)), typN = median(allPc.map(h => +h.hotels));
+  const hm = hot.length ? median(hot.map(h => +h.median)) : null, hn = hot.length ? Math.min(...hot.map(h => +h.hotels)) : null;
+  const items = [];
+  hol.forEach(h => items.push(`<div class="mkitem"><span class="mki mkho">★</span><b>${escH(h)}</b></div>`));
+  [...ev.values()].sort((a, b) => (b.key ? 1 : 0) - (a.key ? 1 : 0)).slice(0, 6).forEach(e => items.push(`<div class="mkitem"><span class="mki mkev">⚑</span>${e.key ? `<b>${escH(e.title)}</b> <span class="pill hi">key local event</span>` : escH(e.title)} <span class="muted small">${escH(e.venue || "")}</span> ${e.url ? `<a class="src" href="${escH(e.url)}" target="_blank" rel="noopener">source</a>` : ""}</div>`));
+  if (ev.size > 6) items.push(`<div class="mkitem muted small">+${ev.size - 6} more events (see Local market below)</div>`);
+  notes.forEach(e => items.push(`<div class="mkitem"><span class="mki mknt">✎</span><b>${escH(e.title)}</b> <span class="pill">${escH(e.impact || "medium")}</span> ${e.url ? `<a class="src" href="${escH(e.url)}" target="_blank" rel="noopener">source</a>` : ""}</div>`));
+  if (snow.length) items.push(`<div class="mkitem"><span class="mki mksn">❄</span>Snow in the forecast: ${snow.join(", ")} <span class="muted small">(NWS)</span></div>`);
+  if (hm != null) { const d = typ ? (hm / typ - 1) * 100 : null, tight = typN && hn != null && hn <= typN * 0.7;
+    items.push(`<div class="mkitem"><span class="mki mkht">🏨</span>Park City hotels <b>$${Math.round(hm)}</b>/night${d != null && Math.abs(d) >= 5 ? ` <b class="${d > 0 ? "down" : "up"}">${pct(d)} vs a typical night</b>` : " (about normal)"}${tight ? ` · only ${hn} hotels showing rooms (usually ${Math.round(typN)}): <b>tight</b>` : ""} <span class="muted small">Google Hotels via SerpApi</span></div>`); }
+  el.innerHTML = `<div class="card" style="margin:10px 0 0;background:var(--bg)"><h3 class="chh" style="margin-top:0">What's happening ${R.ci} → ${R.co}</h3>${items.length ? items.join("") : `<p class="small muted" style="margin:0">Nothing special on the calendar for these dates. Demand here is mostly season and day of week.</p>`}</div>`;
 }
 async function loadMarket() {
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
