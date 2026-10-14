@@ -111,8 +111,16 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
 </div>
 
 <main id="app" class="hidden">
+  <div class="setnav"><h2 style="margin:0 0 8px">1 · Pick a neighborhood or home</h2><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
+  <div class="card" id="search">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">2 · Pick dates</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
+    <p class="small muted" id="calHelp">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
+    <p class="small" id="flagLegend"></p>
+    <div class="cal2" id="cal2"></div>
+    <div id="results"></div>
+  </div>
   <div class="card" id="market">
-    <div class="mkbar"><h2>Local market</h2>
+    <div class="mkbar"><h2>3 · Local market</h2>
       <button class="mkchip ev" data-mk="ev"><span class="mki mkev">⚑</span>Events</button>
       <button class="mkchip sn" data-mk="snow"><span class="mki mksn">❄</span>Snow forecast</button>
       <button class="mkchip ho" data-mk="hol"><span class="mki mkho">★</span>Holidays</button>
@@ -134,14 +142,6 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div id="mkPanel" class="hidden" style="margin-top:8px"></div>
   </div>
   <details class="card" id="hotCard"><summary style="cursor:pointer"><b>🏨 Hotel rates near our homes</b> <span id="hotSum" class="small muted"></span> <span class="small" style="color:var(--teal2)">click to open</span></summary><div id="hotBody" style="margin-top:10px"></div></details>
-  <div class="setnav"><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
-  <div class="card" id="search">
-    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
-    <p class="small muted" id="calHelp">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
-    <p class="small" id="flagLegend"></p>
-    <div class="cal2" id="cal2"></div>
-    <div id="results"></div>
-  </div>
   <div class="card" id="ours"></div>
   <div id="flags" class="hidden"></div>
   <div class="card" id="secAirbnb"><h2>Airbnb <span class="pill">ESTIMATE</span></h2>
