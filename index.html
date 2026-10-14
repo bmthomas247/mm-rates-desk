@@ -1014,20 +1014,20 @@ function mkTicks(pts, x, T) {
 function renderMarketBar() {
   document.querySelectorAll("#market .mkchip").forEach(b => b.classList.toggle("on", !!MK[b.dataset.mk]));
   $("mkSlc").checked = !!MK.slc;
-  const m = state.mk, today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, 30);
+  const m = state.mk, today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, 90);
   const pc = m.events.filter(e => e.source !== "manual" && e.area === "Park City area" && e.start_date <= end).length;
   const nt = m.events.filter(e => e.source === "manual").length;
   const sn = m.weather.filter(w => /Mountain/.test(w.location) && w.snow_in >= 1);
   const wcap = m.weather[0]?.captured_at, ecap = m.events.filter(e => e.source !== "manual").map(e => e.captured_at).sort().pop();
   $("mkInfo").innerHTML = m.err ? `<span class="up">${escH(m.err)}</span>` : !m.loaded ? "Loading…" :
-    `${pc} Park City-area events in the next 30 days · ${sn.length ? sn.map(w => `${w.day.slice(5)}: ${w.snow_in}"`).join(", ") + " snow forecast" : "no snow ≥1\" in the forecast"} · ${nt} of our notes. ` +
+    `${pc} Park City-area events in the next 90 days · ${sn.length ? sn.map(w => `${w.day.slice(5)}: ${w.snow_in}"`).join(", ") + " snow forecast" : "no snow ≥1\" in the forecast"} · ${nt} of our notes. ` +
     `<span class="muted">Sources: <a href="https://www.ticketmaster.com/" target="_blank" rel="noopener">Ticketmaster</a>${ecap ? " (" + new Date(ecap).toLocaleDateString() + ")" : ""}, <a href="https://forecast.weather.gov/MapClick.php?lat=40.587&lon=-111.565" target="_blank" rel="noopener">NWS</a>${wcap ? " (" + new Date(wcap).toLocaleString() + ")" : ""}. Ticks show on the calendar and charts.</span>`;
   if (!$("mkPanel").classList.contains("hidden")) renderMarketList();
 }
 function renderMarketList() {
   const R = state.range, today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
-  const a = R?.ci || today, b = R?.co ? addD(R.co, -1) : addD(today, 45);
-  let h = `<p class="small muted" style="margin:0 0 4px">${R?.co ? `Your picked dates ${a} → ${R.co}` : `Next 45 days`}${MK.slc ? "" : " · Park City-area events only"}</p>`;
+  const a = R?.ci || today, b = R?.co ? addD(R.co, -1) : addD(today, 90);
+  let h = `<p class="small muted" style="margin:0 0 4px">${R?.co ? `Your picked dates ${a} → ${R.co}` : `Next 90 days`}${MK.slc ? "" : " · Park City-area events only"}</p>`;
   for (let k = a; k <= b; k = addD(k, 1)) {
     const o = mkFor(k); if (!o.ev.length && !o.notes.length && !(o.snow && o.snow.in >= 0.5)) continue;
     const items = [];
