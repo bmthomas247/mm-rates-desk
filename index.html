@@ -418,6 +418,7 @@ function renderOurs(S) {
       <td>${avgDays != null ? `<span class="${avgDays > 30 ? "up" : ""}">${Math.round(avgDays)} days ago</span><br><span class="muted small">avg last booking</span>` : "—"}</td></tr>`;
   }
   $("ours").innerHTML = h + `</table></div><p class="small" style="color:var(--teal2);margin:8px 0 0"><b>Click a home</b> to see where it stands vs the market and what to list it at.</p><p class="small muted">Blocked = nights not open on Airbnb (booked or owner-blocked; ESTIMATE). Red = 15+ points emptier than the comps. Gross rent and last booking come from Track (read-only), refreshed nightly; red = no new booking in 30+ days.</p>`;
+  $("ours").insertAdjacentHTML("beforeend", `<h3 class="chh" style="margin-top:14px">Booking pace vs last year <span class="pill">ESTIMATE</span></h3>` + paceHtml(ours.map(c => c.id), "Our homes in this set"));
   $("ours").querySelectorAll("tr[data-home]").forEach(tr => tr.onclick = () => homeDetail(tr.dataset.home));
 }
 
@@ -518,6 +519,44 @@ function nightStats(homeId) {
   }
   return out;
 }
+// ---------- Booking pace vs last year (Brandon 2026-10-14). Track our_bookings, read-only. ESTIMATE. ----------
+// For each of the next 6 months: guest nights + rent on the books today, vs the same month last year as it stood on this date last year
+// (only bookings whose booked date was on or before today minus 365). Same homes only: a home counts if it had a guest stay in the
+// first 60 days of last year's window (so homes we didn't manage last year don't inflate the change).
+function paceRows(ids) {
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), ly = addD(today, -365), lyEnd = addD(ly, 60);
+  const g = (state.bookings || []).filter(b => ids.includes(b.comp_id) && b.kind === "guest" && b.status !== "Cancelled" && b.gross_rent > 0);
+  const same = ids.filter(id => g.some(b => b.comp_id === id && b.arrival >= ly && b.arrival < lyEnd));
+  const tally = (a, b, asOf) => { let n = 0, r = 0, nb = 0;
+    for (const x of g) { if (!same.includes(x.comp_id)) continue; if (!x.booked_at) { if (x.arrival < b && x.departure > a) nb++; continue; }
+      if (x.booked_at.slice(0, 10) > asOf) continue; const per = x.gross_rent / Math.max(x.nights, 1);
+      for (let k = x.arrival; k < x.departure; k = addD(k, 1)) if (k >= a && k < b) { n++; r += per; } }
+    return { n, r, nb }; };
+  const out = []; let d = new Date(today + "T12:00:00");
+  for (let i = 0; i < 6; i++) {
+    const m0 = new Date(d.getFullYear(), d.getMonth() + i, 1, 12), m1 = new Date(d.getFullYear(), d.getMonth() + i + 1, 1, 12);
+    const a = i ? iso(m0) : today, b = iso(m1), cap = Math.round((new Date(b) - new Date(a)) / 864e5) * same.length;
+    out.push({ label: m0.toLocaleDateString(undefined, { month: "short", year: "2-digit" }) + (i ? "" : " (rest)"), now: tally(a, b, today),
+      last: tally(addD(a, -365), addD(b, -365), ly), cap });
+  }
+  return { rows: out, same: same.length, all: ids.length };
+}
+function paceHtml(ids, title) {
+  if (!state.bookingsLoaded) return `<p class="small muted">Booking pace shows after the ThinkStation's bookings sync.</p>`;
+  const P = paceRows(ids);
+  if (!P.same) return `<p class="small muted">${title}: none of these homes had guest stays a year ago in Track, so there's no last-year pace to compare.</p>`;
+  const ch = (a, b) => b ? pct((a / b - 1) * 100) : a ? "new" : "—";
+  return `<div class="wrap"><table><tr><th>${title}</th><th>Nights on the books now</th><th>Same day last year</th><th>Change</th><th>Rent on the books<br><span class="muted small">now vs last year</span></th><th>Avg rent / night<br><span class="muted small">now vs last year</span></th></tr>` +
+    P.rows.map(r => { const d = r.last.n ? (r.now.n / r.last.n - 1) * 100 : null;
+      return `<tr><td><b>${r.label}</b></td><td>${r.now.n} <span class="muted small">of ${r.cap}</span></td><td>${r.last.n}</td><td><b class="${d != null && d <= -15 ? "up" : d != null && d >= 15 ? "down" : ""}">${ch(r.now.n, r.last.n)}</b></td>
+      <td>${fmt(r.now.r)} <span class="muted small">vs ${fmt(r.last.r)}</span></td><td>${r.now.n ? fmt(r.now.r / r.now.n) : "—"} <span class="muted small">vs ${r.last.n ? fmt(r.last.r / r.last.n) : "—"}</span></td></tr>`; }).join("") +
+    `</table></div><p class="small muted">Pace (ESTIMATE): guest nights and gross rent on the books today vs the same month last year as it stood on this date last year, from Track (read-only). ${P.same} of ${P.all} home${P.all > 1 ? "s" : ""} had stays a year ago and are compared; the rest are left out. Red = 15%+ behind last year. Last year counts only stays that weren't later cancelled, so last year can read a little low.${P.rows.some(r => r.now.nb + r.last.nb) ? " Some bookings have no booked date in Track and are left out." : ""}</p>`;
+}
+// ---------- Last-minute ladder (Brandon 2026-10-14): open nights 0–15 days out get a deeper discount the closer they get. ----------
+// DRAFT steps for Brandon/Colleen to confirm. Never on holiday/event nights, never when half the comps are blocked, never under the owner floor.
+const LADDER = [[11, 15, 5], [7, 10, 10], [4, 6, 15], [0, 3, 20]]; // [from days out, to days out, % off list-at]
+const ladderPct = d => (LADDER.find(([a, b]) => d >= a && d <= b) || [])[2] || 0;
+
 // ---------- Our bookings (Track, read-only; synced by the ThinkStation puller into our_bookings) ----------
 function homeBookings(homeId) {
   const rows = (state.bookings || []).filter(b => b.comp_id === homeId && b.status !== "Cancelled");
@@ -691,6 +730,18 @@ function homeDetail(homeId) {
     <div class="legend"><span><i style="background:var(--teal);height:10px"></i>Guest booking</span><span><i style="background:#d4a017;height:10px"></i>Owner stay</span><span><i style="background:#8a94a6;height:10px"></i>Blocked</span><span><i style="background:var(--card);border:1px solid var(--line);height:10px"></i>Open</span></div>
     <div class="cal2" id="hcal"></div>
     <div id="hpick"></div>
+    <h3 class="chh">Last-minute ladder: next 15 nights <span class="pill">ESTIMATE</span> <span class="small muted">draft steps, confirm with Colleen</span></h3>${(() => {
+      if (!hb.synced) return `<p class="small muted">Waiting for the first bookings sync.</p>`;
+      const t0 = iso(new Date(new Date().setHours(12, 0, 0, 0))), tr = [];
+      for (let d = 0; d <= 15; d++) { const k = addD(t0, d), bk = hb.night[k]; if (bk) continue;
+        const pi = pickInfo(k, addD(k, 1)), hol = peakOf(k), cb = compCal.length ? median(compCal.map(f => f(k)).filter(x => x != null).map(x => x === "0" ? 100 : 0)) : null;
+        let off = ladderPct(d), why = `${d} day${d === 1 ? "" : "s"} out`;
+        if (hol) { off = 0; why = "Holiday/event night: hold"; } else if (cb != null && cb >= 50) { off = 0; why = "Comps 50%+ blocked: hold"; }
+        let sug = pi.listAt != null ? Math.round(pi.listAt * (1 - off / 100) / 5) * 5 : null, fl = "";
+        if (sug != null && floor && sug < floor) { sug = floor; fl = " · held at owner floor"; }
+        tr.push(`<tr><td><b>${new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b></td><td>${d}</td><td>${pi.now ? fmt(pi.now) : "—"}</td><td>${pi.listAt ? fmt(pi.listAt) : "—"}</td><td>${off ? "−" + off + "%" : "0%"}</td><td><b style="color:var(--teal2)">${sug ? fmt(sug) : "—"}</b></td><td class="small muted">${why}${fl}</td></tr>`); }
+      return tr.length ? `<div class="wrap"><table><tr><th>Open night</th><th>Days out</th><th>Ours now</th><th>List at</th><th>Ladder</th><th>Suggested</th><th>Why</th></tr>${tr.join("")}</table></div><p class="small muted">Ladder (draft): ${LADDER.map(([a, b, p]) => `${a}–${b} days out −${p}%`).join(" · ")}, off the list-at nightly rent. Booked, owner and blocked nights are skipped. Rounded to $5.</p>` : `<p class="small muted">No open nights in the next 15 days.</p>`; })()}
+    <h3 class="chh">Booking pace vs last year <span class="pill">ESTIMATE</span></h3>${paceHtml([homeId], c.label)}
     <h3 class="chh">Holidays and events: booked or not</h3>${homeHolidays(hb)}
     <div class="cal2" style="margin-top:6px"><div><h3 class="chh">Recent bookings</h3>${homeBookList(hb, "recent")}</div><div><h3 class="chh">Top bookings <span class="small muted">highest rent per night</span></h3>${homeBookList(hb, "top")}</div></div>
     <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, admin 8.3% + damage waiver 5%, Airbnb recovery 21.65% (Track fees, 2026-10-08), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
@@ -971,7 +1022,18 @@ const MK_DEF = { ev: true, snow: true, notes: true, hol: true, slc: false };
 // Holidays for the Local market strip (Brandon 2026-10-14): our peak list above + other US / Utah holidays (calendar dates).
 const HOLIDAYS = [...PEAKS.map(([a, b, n]) => [a, b, n]), ["2026-10-31", "2026-10-31", "Halloween"], ["2026-11-11", "2026-11-11", "Veterans Day"],
   ["2027-03-28", "2027-03-28", "Easter"], ["2027-05-29", "2027-05-31", "Memorial Day weekend"], ["2027-07-02", "2027-07-05", "July 4th weekend"],
-  ["2027-07-23", "2027-07-25", "Pioneer Day weekend (Utah)"], ["2027-09-04", "2027-09-06", "Labor Day weekend"]];
+  ["2027-07-23", "2027-07-25", "Pioneer Day weekend (Utah)"], ["2027-09-04", "2027-09-06", "Labor Day weekend"],
+  // Utah school breaks 2026-27 = drive-up demand (USBE district calendar, https://www.schools.utah.gov/schoolcalendars/26-27DistrictCalendar.pdf, read 2026-10-14)
+  ["2026-10-14", "2026-10-23", "Utah fall break (most districts Oct 15–16; Wasatch from 10/14, Nebo to 10/19, Jordan 10/20–23)"],
+  ["2026-12-21", "2027-01-01", "Utah school winter break"],
+  ["2027-03-29", "2027-04-02", "Utah spring break: Granite, Jordan, Weber"], ["2027-04-05", "2027-04-09", "Utah spring break: Canyons, Davis, Nebo, Wasatch"],
+  ["2027-04-12", "2027-04-16", "Utah spring break: Park City"],
+  // Resort opening days 2026-27 (Deseret News 2026-10-07, https://www.deseret.com/lifestyle/2026/10/07/utah-ski-resorts-opening-dates-new-terrain-upgraded-chairlifts/;
+  // Deer Valley: KPCW 2026-09-16). These move with snow; rechecked each Wednesday.
+  ["2026-11-20", "2026-11-20", "Opening day: Park City Mountain, Alta, Solitude"], ["2026-11-27", "2026-11-27", "Opening day: Snowbird, Snowbasin"],
+  ["2026-12-05", "2026-12-05", "Opening day: Deer Valley"], ["2026-12-11", "2026-12-11", "Opening day: Powder Mountain"],
+  // Hanukkah: nightfall Dec 4 to nightfall Dec 12, 2026 (Chabad.org, https://www.chabad.org/holidays/chanukah/article_cdo/aid/671899/, read 2026-10-14)
+  ["2026-12-04", "2026-12-11", "Hanukkah"]];
 const holOf = k => HOLIDAYS.filter(h => k >= h[0] && k <= h[1]).map(h => h[2]);
 let MK = { ...MK_DEF }; try { Object.assign(MK, JSON.parse(localStorage.getItem("mmMarket") || "{}")); } catch (e) {}
 const escH = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
