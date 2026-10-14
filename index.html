@@ -133,6 +133,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     </div><div style="display:flex;gap:8px;margin-top:8px"><button class="tab on" id="mkSave">Save</button><button class="tab" id="mkCancel">Cancel</button><span id="mkMsg" class="small muted" style="align-self:center"></span></div></div>
     <div id="mkPanel" class="hidden" style="margin-top:8px"></div>
   </div>
+  <details class="card" id="hotCard"><summary style="cursor:pointer"><b>🏨 Hotel rates near our homes</b> <span id="hotSum" class="small muted"></span> <span class="small" style="color:var(--teal2)">click to open</span></summary><div id="hotBody" style="margin-top:10px"></div></details>
   <div class="setnav"><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
@@ -230,7 +231,7 @@ async function boot() {
   const cx = n => split(n)[0].replace(/^the\s+/i, "").toLowerCase();
   sets.sort((a, b) => cx(a.name).localeCompare(cx(b.name)) || (([x1, y1], [x2, y2]) => x1 - x2 || y1 - y2)(typeKey(split(a.name)[1]), typeKey(split(b.name)[1])));
   state.sets = sets;
-  loadMarket();
+  loadMarket(); $("hotCard").addEventListener("toggle", renderHotels);
   const groups = [];
   for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
     if (g && g.c === c) g.items.push([s, t]); else groups.push({ c, items: [[s, t]] }); }
@@ -974,7 +975,7 @@ function render() {
   if (RN0) state.checks = state.allChecks.filter(r => r.check_in < state.range.co && r.check_out > state.range.ci);
   document.querySelectorAll(".scopeLbl").forEach(e => e.textContent = RN0 ? `${RN0[0]} → ${state.range.co} (${RN0.length} night${RN0.length > 1 ? "s" : ""})` : "next 180 nights");
   const S = stays().filter(st => !state.range?.co || (st.ci < state.range.co && st.co > state.range.ci));
-  renderOurs(S);
+  renderOurs(S); if (state.mk?.loaded) renderHotels();
   renderDaily("Airbnb"); renderDaily("Direct"); renderDaily("VRBO"); renderDirectFees(); renderSiteFees();
 
   // Fill chart
@@ -1052,6 +1053,46 @@ let MK = { ...MK_DEF }; try { Object.assign(MK, JSON.parse(localStorage.getItem(
 const escH = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mkSave = () => { try { localStorage.setItem("mmMarket", JSON.stringify(MK)); } catch (e) {} };
 state.mk = { events: [], weather: [], loaded: false };
+// ---------- Hotel rates chart (Brandon 2026-10-14): hotel_nights (Google Hotels via SerpApi). Best compare for studios and 1BRs. ----------
+// Hotel prices = lowest nightly rate Google shows for 2 adults, 2-night stay from that night. Shows prices and how many hotels still
+// show rooms (fewer = tighter market). It does NOT show hotels' booked nights.
+function renderHotels() {
+  const H = state.mk?.hotels || [], today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  const pc = H.filter(h => h.area === "Park City"), hb = H.filter(h => h.area !== "Park City"), cap = H.map(h => h.captured_at).sort().pop();
+  $("hotSum").textContent = H.length ? `· Park City median $${Math.round(median(pc.map(h => +h.median)) || 0)}/night over ${pc.length} night${pc.length === 1 ? "" : "s"} · Heber $${Math.round(median(hb.map(h => +h.median)) || 0)}` : "· no hotel data yet";
+  if (!$("hotCard").open) return;
+  if (!H.length) { $("hotBody").innerHTML = `<p class="small muted">Hotel rates come in every Wednesday (hotels.py). Run run_hotels_now.bat to fill the next 90 nights now.</p>`; return; }
+  const pre = h => h.median_pre_tax != null ? +h.median_pre_tax : +h.median;
+  const N = 90, days = [...Array(N)].map((_, i) => addD(today, i)), W = 900, Ht = 240, L = 46, R = 12, T = 14, B = 26;
+  const by = (arr, k) => arr.find(h => h.check_in === k);
+  const ss = state.set && /studio|1br/i.test(state.set.name || "") ? state.set : state.set;
+  const comp = state.set && adrMode() ? days.map(k => adrDay(k).adr) : days.map(() => null);
+  const vals = [...pc.map(h => +h.p75), ...pc.map(pre), ...hb.map(pre), ...comp.filter(x => x != null)];
+  const ymax = Math.max(100, ...vals) * 1.1, x = i => L + i * (W - L - R) / (N - 1), y = v => T + (Ht - T - B) * (1 - v / ymax);
+  const line = (f, col, dash) => { let d = "", pen = false; days.forEach((k, i) => { const v = f(k, i); if (v == null || isNaN(v)) { pen = false; return; } d += (pen ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true; });
+    return d ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="2"${dash ? ' stroke-dasharray="5 4"' : ""}/>` : ""; };
+  let band = ""; days.forEach((k, i) => { const h = by(pc, k); if (h) band += `<rect x="${x(i) - 3}" y="${y(+h.p75)}" width="6" height="${Math.max(1, y(+h.p25) - y(+h.p75))}" fill="#0e7c66" opacity=".15"/>`; });
+  const dots = (arr, col) => days.map((k, i) => { const h = by(arr, k); return h ? `<circle cx="${x(i)}" cy="${y(pre(h))}" r="3" fill="${col}"/>` : ""; }).join("");
+  const grid = [0, .25, .5, .75, 1].map(f => `<line x1="${L}" x2="${W - R}" y1="${y(ymax * f)}" y2="${y(ymax * f)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(ymax * f) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">$${Math.round(ymax * f)}</text>`).join("");
+  const ticks = days.map((k, i) => k.slice(8) === "01" || i === 0 ? `<text x="${x(i)}" y="${Ht - 8}" font-size="10" fill="var(--muted)">${new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text>` : "").join("");
+  const hit = days.map((k, i) => `<rect data-hk="${k}" x="${x(i) - 5}" y="${T}" width="10" height="${Ht - T - B}" fill="transparent" style="cursor:pointer"><title>${k}${by(pc, k) ? ` · Park City hotels $${Math.round(pre(by(pc, k)))} (${by(pc, k).hotels} with rooms)` : ""}${by(hb, k) ? ` · Heber $${Math.round(pre(by(hb, k)))}` : ""}${comp[i] ? ` · ${state.set.name} comps $${Math.round(comp[i])}` : ""}</title></rect>`).join("");
+  const cnt = days.map((k, i) => { const h = by(pc, k); return h ? `<rect x="${x(i) - 3}" y="${60 - h.hotels * 2.5}" width="6" height="${h.hotels * 2.5}" fill="#0e7c66" opacity=".6"><title>${k}: ${h.hotels} Park City hotels showing rooms</title></rect>` : ""; }).join("");
+  $("hotBody").innerHTML = `<div class="legend"><span><i style="background:#0e7c66;height:3px"></i>Park City hotels, median before tax</span><span><i style="background:#0e7c66;opacity:.2;height:10px"></i>middle half of Park City hotels</span><span><i style="background:#c98a1b;height:3px"></i>Heber / Jordanelle hotels</span>${state.set && adrMode() ? `<span><i style="background:#7c5cc4;height:3px"></i>${escH(state.set.name)} comps, daily rate (ADR)</span>` : ""}</div>
+    <svg viewBox="0 0 ${W} ${Ht}" style="width:100%;height:auto">${grid}${band}${line(k => by(pc, k) && pre(by(pc, k)), "#0e7c66")}${line(k => by(hb, k) && pre(by(hb, k)), "#c98a1b")}${line((k, i) => comp[i], "#7c5cc4", true)}${dots(pc, "#0e7c66")}${dots(hb, "#c98a1b")}${ticks}${hit}</svg>
+    <div class="small muted" style="margin:6px 0 2px">Park City hotels still showing rooms (fewer = tighter market)</div><svg viewBox="0 0 ${W} 64" style="width:100%;height:auto">${cnt}</svg>
+    <div id="hotDay"><p class="small" style="color:var(--teal2)">Click a night on the chart to see every hotel and its price.</p></div>
+    <p class="small muted">What this shows: the lowest nightly price Google Hotels lists for each hotel (2 adults, 2-night stay starting that night), and how many hotels still show rooms. It does <b>not</b> show hotels' booked nights. Best match for our studios and 1BRs (Prospector, Carriage House, Edelweiss, Red Pine, Westgate): a hotel room is their real competition. Pick a studio or 1BR set below to draw its comps on the chart. ${state.set && !/studio|1br/i.test(state.set.name || "") ? "This set is bigger than a hotel room, so treat the hotel line as a market-temperature gauge only. " : ""}Source: <a href="https://www.google.com/travel/hotels" target="_blank" rel="noopener">Google Hotels</a> via SerpApi, captured ${cap ? new Date(cap).toLocaleDateString() : "—"}. Vacation rentals Google mixes in are left out of the medians.</p>`;
+  $("hotBody").querySelector("svg").onclick = async e => { const k = e.target.dataset?.hk; if (!k) return;
+    $("hotDay").innerHTML = `<p class="small muted">Loading ${k}…</p>`;
+    const { data, error } = await sb.from("hotel_rates").select("area,name,type,hotel_class,rating,reviews,rate_night,rate_night_pre_tax,cheapest_source,link,run_id,captured_at,search_url").eq("check_in", k).order("rate_night");
+    if (error) { $("hotDay").innerHTML = `<p class="up small">${escH(error.message)}</p>`; return; }
+    const last = {}; (data || []).forEach(r => { last[r.area] = Math.max(last[r.area] || 0, r.run_id || 0); });
+    const rows = (data || []).filter(r => (r.run_id || 0) === last[r.area]);
+    $("hotDay").innerHTML = `<h3 class="chh">Hotels for ${new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} (2 nights)</h3><div class="wrap"><table><tr><th>Hotel</th><th>Area</th><th>Class / rating</th><th>Per night<br><span class="muted small">before tax</span></th><th>Per night<br><span class="muted small">with tax &amp; fees</span></th><th>Cheapest on</th></tr>` +
+      rows.map(r => `<tr${r.type && r.type !== "hotel" ? ' class="muted"' : ""}><td>${r.link ? `<a href="${escH(r.link)}" target="_blank" rel="noopener">${escH(r.name)}</a>` : escH(r.name)}${r.type && r.type !== "hotel" ? ` <span class="pill">${escH(r.type)}</span>` : ""}</td><td>${escH(r.area)}</td><td>${r.hotel_class ? r.hotel_class + "★" : "—"} · ${r.rating ?? "—"}${r.reviews ? ` <span class="muted small">(${r.reviews})</span>` : ""}</td><td>${fmt(r.rate_night_pre_tax)}</td><td><b>${fmt(r.rate_night)}</b></td><td>${escH(r.cheapest_source || "—")}</td></tr>`).join("") +
+      `</table></div><p class="small muted">Source: <a href="${escH(rows[0]?.search_url || "https://www.google.com/travel/hotels")}" target="_blank" rel="noopener">Google Hotels search</a>, captured ${rows[0] ? new Date(rows[0].captured_at).toLocaleString() : "—"}.</p>`;
+  };
+}
 async function loadMarket() {
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
   const [ev, wx, ht] = await Promise.all([
@@ -1060,7 +1101,7 @@ async function loadMarket() {
     // Hotels (Google Hotels via SerpApi, hotels.py, weekly): one row per area + night, hotels only (2026-10-14)
     sb.from("hotel_nights").select("*").gte("check_in", today).order("check_in")]);
   state.mk = { events: (ev.data || []).filter(e => (e.end_date || e.start_date) >= today), weather: wx.data || [], hotels: ht.data || [], loaded: true, err: ev.error?.message || wx.error?.message };
-  renderMarketBar(); if (state.set) render();
+  renderMarketBar(); renderHotels(); if (state.set) render();
 }
 // Items for one night, honoring the toggles.
 function mkFor(k) {
