@@ -18,6 +18,10 @@ header h1{font-size:17px;margin:0;font-weight:700}header h1 span{color:var(--tea
 .sp{flex:1}.muted{color:var(--muted)}.small{font-size:12px}
 main{max-width:1180px;margin:0 auto;padding:16px}
 .tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px;margin-bottom:14px}
+.setnav{margin-bottom:14px}.setfind{display:flex;gap:8px;align-items:center;margin-bottom:8px}.setfind input{flex:1;max-width:420px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font:inherit}
+.county{border:1px solid var(--line);border-radius:12px;background:var(--card);margin-bottom:8px}.county>summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center}
+.county>summary::-webkit-details-marker{display:none}.county>summary::before{content:"▸";color:var(--muted);transition:transform .15s}.county[open]>summary::before{transform:rotate(90deg)}
+.county .tabs{padding:0 14px 10px;margin:0}.tgcode{font-size:11px;color:var(--muted);font-weight:500;margin-left:4px}
 .tgrp{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line)}
 .tgname{font-weight:600;color:var(--ink);min-width:150px;flex:1 1 150px;font-size:14px}
 .tgrp .tab{padding:5px 10px;font-size:13px}
@@ -127,7 +131,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     </div><div style="display:flex;gap:8px;margin-top:8px"><button class="tab on" id="mkSave">Save</button><button class="tab" id="mkCancel">Cancel</button><span id="mkMsg" class="small muted" style="align-self:center"></span></div></div>
     <div id="mkPanel" class="hidden" style="margin-top:8px"></div>
   </div>
-  <div class="tabs" id="tabs"></div>
+  <div class="setnav"><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Search a stay</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
     <p class="small muted" id="calHelp">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
@@ -228,11 +232,54 @@ async function boot() {
   const groups = [];
   for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
     if (g && g.c === c) g.items.push([s, t]); else groups.push({ c, items: [[s, t]] }); }
-  $("tabs").innerHTML = groups.map(g => `<div class="tgrp"><span class="tgname">${g.c}</span>${g.items.map(([s, t]) =>
-    `<button class="tab" data-id="${s.id}" title="${s.name}">${(t || s.name).replace(/^Studio\s*[–-]\s*/i, "Studio ")}</button>`).join("")}</div>`).join("");
+  // Accordion by county, with search by neighborhood, our unit or our short code (Brandon 2026-10-14).
+  for (const g of groups) { g.county = countyOf(g.c, g.items[0][0]); g.code = codeOf(g.c); }
+  const counties = [...new Set(groups.map(g => g.county))].sort((a, b) => (COUNTY_ORDER.indexOf(a) + 99 * (COUNTY_ORDER.indexOf(a) < 0)) - (COUNTY_ORDER.indexOf(b) + 99 * (COUNTY_ORDER.indexOf(b) < 0)));
+  let openC = {}; try { openC = JSON.parse(localStorage.getItem("mmCounties") || "{}"); } catch (e) {}
+  const row = g => `<div class="tgrp" data-key="${String((g.c + " " + g.code + " " + g.items.map(([s]) => s.name).join(" ")).toLowerCase().replace(/"/g, ""))}"><span class="tgname">${g.c}${g.code ? `<span class="tgcode">${g.code}</span>` : ""}</span>${g.items.map(([s, t]) =>
+    `<button class="tab" data-id="${s.id}" title="${s.name}">${(t || s.name).replace(/^Studio\s*[–-]\s*/i, "Studio ")}</button>`).join("")}</div>`;
+  $("tabs").innerHTML = counties.map(c => `<details class="county" data-c="${c}"${openC[c] === false ? "" : " open"}><summary>${c}<span class="small muted">${groups.filter(g => g.county === c).length} neighborhoods</span></summary><div class="tabs">${groups.filter(g => g.county === c).map(row).join("")}</div></details>`).join("");
   $("tabs").onclick = e => e.target.dataset.id && load(e.target.dataset.id);
+  $("tabs").querySelectorAll("details.county").forEach(d => d.addEventListener("toggle", () => { if ($("setq").value) return; openC[d.dataset.c] = d.open; try { localStorage.setItem("mmCounties", JSON.stringify(openC)); } catch (e) {} }));
+  // our unit labels per set, so "1403" or "BHL 1403" finds the right set
+  sb.from("comps").select("set_id,label").eq("tier", "Ours").eq("active", true).then(({ data }) => {
+    const bySet = {}; for (const r of data || []) (bySet[r.set_id] = bySet[r.set_id] || []).push(r.label.replace(/\s*\(.*?\)\s*$/, ""));
+    $("tabs").querySelectorAll(".tgrp").forEach(el => { const ids = [...el.querySelectorAll("[data-id]")].map(b => b.dataset.id);
+      el.dataset.key += " " + ids.flatMap(i => bySet[i] || []).join(" ").toLowerCase(); });
+    if ($("setq").value) filterSets();
+  });
+  $("setq").oninput = filterSets;
   let last = null; try { last = localStorage.getItem("mmSet"); } catch (e) {}
   load(sets.some(s => s.id === last) ? last : sets[0].id);
+}
+
+// County + short code for each neighborhood (Moose Management codes, e.g. BHV = Bear Hollow Village). 2026-10-14.
+const COUNTY_ORDER = ["Summit County", "Wasatch County", "Other"];
+const NB = [
+  [/bear hollow lodges/i, "Summit County", "BHL"], [/bear hollow village/i, "Summit County", "BHV"], [/blackstone/i, "Summit County", "BSR"],
+  [/carriage house/i, "Summit County", "CH"], [/crestview/i, "Summit County", "CV"], [/edelweiss/i, "Summit County", "EH"],
+  [/foxpoint|fox point/i, "Summit County", "FP"], [/jeremy ranch/i, "Summit County", "JMR"], [/moose lodge/i, "Summit County", "ML"],
+  [/park west/i, "Summit County", "PWV"], [/powderwood/i, "Summit County", "PW"], [/prospector/i, "Summit County", "PL"],
+  [/racquet/i, "Summit County", "RC"], [/red pine/i, "Summit County", "RP"], [/silver creek/i, "Summit County", "SCV"],
+  [/ski team/i, "Summit County", "ST"], [/sunspot/i, "Summit County", "SS"], [/three kings/i, "Summit County", "TK"],
+  [/greyhawk/i, "Summit County", "GH"], [/upper main/i, "Summit County", "UM"], [/westgate/i, "Summit County", "WG"], [/white pine/i, "Summit County", "WP"],
+  [/black rock/i, "Wasatch County", "BRR"], [/coyote/i, "Wasatch County", "CR"], [/deer springs/i, "Wasatch County", "DS"],
+  [/fox bay/i, "Wasatch County", "FB"], [/hailstone/i, "Wasatch County", "HS"], [/jordanelle estates/i, "Wasatch County", "JE"],
+  [/jordanelle ridge/i, "Wasatch County", "JR"], [/klaim/i, "Wasatch County", "KL"], [/mason|stillwater/i, "Wasatch County", "SW"],
+  [/mayflower lakeside/i, "Wasatch County", "MFL"], [/mayflower village/i, "Wasatch County", "MV"], [/parks edge/i, "Wasatch County", "PE"],
+  [/pioche/i, "Wasatch County", "PV"], [/retreat/i, "Wasatch County", "RJ"], [/village at the shores|shores/i, "Wasatch County", "VS"],
+  [/wasatch springs/i, "Wasatch County", "WS"]];
+const nbOf = name => NB.find(([re]) => re.test(name));
+const countyOf = (name, set) => (set && set.county) || (nbOf(name) || [])[1] || "Other";
+const codeOf = name => (nbOf(name) || [])[2] || "";
+function filterSets() {
+  const q = $("setq").value.trim().toLowerCase(); let n = 0;
+  $("tabs").querySelectorAll("details.county").forEach(d => {
+    let any = 0;
+    d.querySelectorAll(".tgrp").forEach(el => { const hit = !q || q.split(/\s+/).every(w => el.dataset.key.includes(w)); el.style.display = hit ? "" : "none"; any += hit; });
+    d.style.display = any ? "" : "none"; if (q && any) d.open = true; n += any;
+  });
+  $("setqn").textContent = q ? `${n} neighborhood${n === 1 ? "" : "s"}` : "";
 }
 
 // Supabase sends at most 1,000 rows per request: fetch every page (in parallel after the first) so nothing past
