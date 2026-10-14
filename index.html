@@ -254,15 +254,15 @@ async function boot() {
 }
 
 // County + short code for each neighborhood (Moose Management codes, e.g. BHV = Bear Hollow Village). 2026-10-14.
-const COUNTY_ORDER = ["Summit County", "Wasatch County", "Other"];
+const COUNTY_ORDER = ["Park City", "Summit County", "Wasatch County", "Other"];
 const NB = [
   [/bear hollow lodges/i, "Summit County", "BHL"], [/bear hollow village/i, "Summit County", "BHV"], [/blackstone/i, "Summit County", "BSR"],
-  [/carriage house/i, "Summit County", "CH"], [/crestview/i, "Summit County", "CV"], [/edelweiss/i, "Summit County", "EH"],
-  [/foxpoint|fox point/i, "Summit County", "FP"], [/jeremy ranch/i, "Summit County", "JMR"], [/moose lodge/i, "Summit County", "ML"],
-  [/park west/i, "Summit County", "PWV"], [/powderwood/i, "Summit County", "PW"], [/prospector/i, "Summit County", "PL"],
-  [/racquet/i, "Summit County", "RC"], [/red pine/i, "Summit County", "RP"], [/silver creek/i, "Summit County", "SCV"],
-  [/ski team/i, "Summit County", "ST"], [/sunspot/i, "Summit County", "SS"], [/three kings/i, "Summit County", "TK"],
-  [/greyhawk/i, "Summit County", "GH"], [/upper main/i, "Summit County", "UM"], [/westgate/i, "Summit County", "WG"], [/white pine/i, "Summit County", "WP"],
+  [/carriage house/i, "Park City", "CH"], [/crestview/i, "Summit County", "CV"], [/edelweiss/i, "Park City", "EH"],
+  [/foxpoint|fox point/i, "Summit County", "FP"], [/jeremy ranch/i, "Summit County", "JMR"], [/moose lodge/i, "Park City", "ML"],
+  [/park west/i, "Summit County", "PWV"], [/powderwood/i, "Summit County", "PW"], [/prospector/i, "Park City", "PL"],
+  [/racquet/i, "Park City", "RC"], [/red pine/i, "Summit County", "RP"], [/silver creek/i, "Summit County", "SCV"],
+  [/ski team/i, "Park City", "ST"], [/sunspot/i, "Park City", "SS"], [/three kings/i, "Park City", "TK"],
+  [/greyhawk/i, "Park City", "GH"], [/upper main/i, "Park City", "UM"], [/westgate/i, "Summit County", "WG"], [/white pine/i, "Summit County", "WP"],
   [/black rock/i, "Wasatch County", "BRR"], [/coyote/i, "Wasatch County", "CR"], [/deer springs/i, "Wasatch County", "DS"],
   [/fox bay/i, "Wasatch County", "FB"], [/hailstone/i, "Wasatch County", "HS"], [/jordanelle estates/i, "Wasatch County", "JE"],
   [/jordanelle ridge/i, "Wasatch County", "JR"], [/klaim/i, "Wasatch County", "KL"], [/mason|stillwater/i, "Wasatch County", "SW"],
