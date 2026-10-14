@@ -94,7 +94,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
 .mkchk{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2)}.mkchk input{width:auto}
 .mkday{display:grid;grid-template-columns:96px 1fr;gap:4px 12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
 .mkday .d{color:var(--muted);font-size:12px;padding-top:1px}.mkitem{margin:1px 0}.mkitem .src{font-size:11px}
-.mki{display:inline-block;width:18px;text-align:center}.mkev{color:var(--amber)}.mksn{color:#3b82c4}.mknt{color:#7c5cc4}
+.mki{display:inline-block;width:18px;text-align:center}.mkev{color:var(--amber)}.mksn{color:#3b82c4}.mknt{color:#7c5cc4}.mkho{color:var(--red)}.mkchip.ho.on{background:var(--redbg)}
 .mkform{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}.mkform label{font-size:12px;color:var(--muted)}
 .mkform select,.mkform textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 .day .mkd{position:absolute;top:2px;left:calc(50% - 22px);font-size:9px;line-height:1;letter-spacing:-1px}
@@ -115,6 +115,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div class="mkbar"><h2>Local market</h2>
       <button class="mkchip ev" data-mk="ev"><span class="mki mkev">⚑</span>Events</button>
       <button class="mkchip sn" data-mk="snow"><span class="mki mksn">❄</span>Snow forecast</button>
+      <button class="mkchip ho" data-mk="hol"><span class="mki mkho">★</span>Holidays</button>
       <button class="mkchip nt" data-mk="notes"><span class="mki mknt">✎</span>Our notes</button>
       <label class="mkchk"><input type="checkbox" id="mkSlc"> Include Salt Lake events</label>
       <span class="sp"></span><button class="tab" id="mkList">Show list</button> <button class="tab on" id="mkAddBtn">+ Add event / news</button></div>
@@ -966,7 +967,12 @@ function render() {
 
 // ---------- Local market: events (Ticketmaster), snow forecast (NWS), our notes (2026-10-13) ----------
 // Every item keeps its source link + capture date. Our notes need a link unless Kim or Brandon approves without one.
-const MK_DEF = { ev: true, snow: true, notes: true, slc: false };
+const MK_DEF = { ev: true, snow: true, notes: true, hol: true, slc: false };
+// Holidays for the Local market strip (Brandon 2026-10-14): our peak list above + other US / Utah holidays (calendar dates).
+const HOLIDAYS = [...PEAKS.map(([a, b, n]) => [a, b, n]), ["2026-10-31", "2026-10-31", "Halloween"], ["2026-11-11", "2026-11-11", "Veterans Day"],
+  ["2027-03-28", "2027-03-28", "Easter"], ["2027-05-29", "2027-05-31", "Memorial Day weekend"], ["2027-07-02", "2027-07-05", "July 4th weekend"],
+  ["2027-07-23", "2027-07-25", "Pioneer Day weekend (Utah)"], ["2027-09-04", "2027-09-06", "Labor Day weekend"]];
+const holOf = k => HOLIDAYS.filter(h => k >= h[0] && k <= h[1]).map(h => h[2]);
 let MK = { ...MK_DEF }; try { Object.assign(MK, JSON.parse(localStorage.getItem("mmMarket") || "{}")); } catch (e) {}
 const escH = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mkSave = () => { try { localStorage.setItem("mmMarket", JSON.stringify(MK)); } catch (e) {} };
@@ -981,7 +987,7 @@ async function loadMarket() {
 }
 // Items for one night, honoring the toggles.
 function mkFor(k) {
-  const o = { ev: [], notes: [], snow: null };
+  const o = { ev: [], notes: [], snow: null, hol: MK.hol ? holOf(k) : [] };
   if (!state.mk.loaded) return o;
   for (const e of state.mk.events) {
     if (k < e.start_date || k > (e.end_date || e.start_date)) continue;
@@ -992,11 +998,12 @@ function mkFor(k) {
     if (up && up.snow_in > 0) o.snow = { in: +up.snow_in, loc: up.location, url: up.url, cap: up.captured_at, town: w.find(x => /town/.test(x.location)) }; }
   return o;
 }
-const mkIcons = k => { const o = mkFor(k); return (o.ev.length ? "⚑" : "") + (o.snow && o.snow.in >= 1 ? "❄" : "") + (o.notes.length ? "✎" : ""); };
+const mkIcons = k => { const o = mkFor(k); return (o.hol.length ? "★" : "") + (o.ev.length ? "⚑" : "") + (o.snow && o.snow.in >= 1 ? "❄" : "") + (o.notes.length ? "✎" : ""); };
 const mkTitle = k => { const o = mkFor(k), t = [];
-  if (o.snow) t.push(`Snow ${o.snow.in}" (${o.snow.loc})`); o.notes.forEach(e => t.push("Note: " + e.title)); o.ev.slice(0, 4).forEach(e => t.push(e.title + (e.venue ? " @ " + e.venue : "")));
+  o.hol.forEach(h => t.push(h)); if (o.snow) t.push(`Snow ${o.snow.in}" (${o.snow.loc})`); o.notes.forEach(e => t.push("Note: " + e.title)); o.ev.slice(0, 4).forEach(e => t.push(e.title + (e.venue ? " @ " + e.venue : "")));
   if (o.ev.length > 4) t.push(`+${o.ev.length - 4} more events`); return t.length ? " · " + t.join(" · ") : ""; };
 function mkTip(k) { const o = mkFor(k), t = [];
+  o.hol.forEach(h => t.push(`<span class="mkho">★</span> ${escH(h)}`));
   if (o.snow) t.push(`<span class="mksn">❄</span> ${o.snow.in}" snow forecast <span class="muted">(NWS)</span>`);
   o.notes.forEach(e => t.push(`<span class="mknt">✎</span> ${escH(e.title)}${e.impact === "high" ? " <b>(high)</b>" : ""}`));
   o.ev.slice(0, 3).forEach(e => t.push(`<span class="mkev">⚑</span> ${escH(e.title.slice(0, 48))}`)); if (o.ev.length > 3) t.push(`<span class="muted">+${o.ev.length - 3} more events</span>`);
@@ -1005,6 +1012,7 @@ function mkTip(k) { const o = mkFor(k), t = [];
 function mkTicks(pts, x, T) {
   let s = "";
   pts.forEach((p, i) => { const o = mkFor(p.k);
+    if (o.hol.length) s += `<text x="${x(i)}" y="${T - 28}" text-anchor="middle" font-size="9" fill="var(--red)">★<title>${escH(o.hol.join(" · "))}</title></text>`;
     if (o.ev.length) s += `<path d="M${x(i) - 4},${T - 15}L${x(i) + 4},${T - 15}L${x(i)},${T - 8}Z" fill="var(--amber)"><title>${escH(mkTitle(p.k).slice(3))}</title></path>`;
     if (o.notes.length) s += `<rect x="${x(i) - 3.5}" y="${T - 26}" width="7" height="7" rx="1.5" fill="#7c5cc4"><title>${escH(o.notes.map(e => e.title).join(" · "))}</title></rect>`;
     if (o.snow && o.snow.in >= 0.5) s += `<circle cx="${x(i)}" cy="${T - 4}" r="${Math.min(2 + o.snow.in * 0.7, 7)}" fill="#3b82c4" opacity=".85"><title>${o.snow.in}" snow forecast (${escH(o.snow.loc)}, NWS)</title></circle>`;
@@ -1017,10 +1025,11 @@ function renderMarketBar() {
   const m = state.mk, today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, 90);
   const pc = m.events.filter(e => e.source !== "manual" && e.area === "Park City area" && e.start_date <= end).length;
   const nt = m.events.filter(e => e.source === "manual").length;
+  const hl = HOLIDAYS.filter(h => h[1] >= today && h[0] <= end).map(h => h[2]);
   const sn = m.weather.filter(w => /Mountain/.test(w.location) && w.snow_in >= 1);
   const wcap = m.weather[0]?.captured_at, ecap = m.events.filter(e => e.source !== "manual").map(e => e.captured_at).sort().pop();
   $("mkInfo").innerHTML = m.err ? `<span class="up">${escH(m.err)}</span>` : !m.loaded ? "Loading…" :
-    `${pc} Park City-area events in the next 90 days · ${sn.length ? sn.map(w => `${w.day.slice(5)}: ${w.snow_in}"`).join(", ") + " snow forecast" : "no snow ≥1\" in the forecast"} · ${nt} of our notes. ` +
+    `${hl.length ? `★ ${hl.join(", ")} · ` : ""}${pc} Park City-area events in the next 90 days · ${sn.length ? sn.map(w => `${w.day.slice(5)}: ${w.snow_in}"`).join(", ") + " snow forecast" : "no snow ≥1\" in the forecast"} · ${nt} of our notes. ` +
     `<span class="muted">Sources: <a href="https://www.ticketmaster.com/" target="_blank" rel="noopener">Ticketmaster</a>${ecap ? " (" + new Date(ecap).toLocaleDateString() + ")" : ""}, <a href="https://forecast.weather.gov/MapClick.php?lat=40.587&lon=-111.565" target="_blank" rel="noopener">NWS</a>${wcap ? " (" + new Date(wcap).toLocaleString() + ")" : ""}. Ticks show on the calendar and charts.</span>`;
   if (!$("mkPanel").classList.contains("hidden")) renderMarketList();
 }
@@ -1029,8 +1038,9 @@ function renderMarketList() {
   const a = R?.ci || today, b = R?.co ? addD(R.co, -1) : addD(today, 90);
   let h = `<p class="small muted" style="margin:0 0 4px">${R?.co ? `Your picked dates ${a} → ${R.co}` : `Next 90 days`}${MK.slc ? "" : " · Park City-area events only"}</p>`;
   for (let k = a; k <= b; k = addD(k, 1)) {
-    const o = mkFor(k); if (!o.ev.length && !o.notes.length && !(o.snow && o.snow.in >= 0.5)) continue;
+    const o = mkFor(k); if (!o.hol.length && !o.ev.length && !o.notes.length && !(o.snow && o.snow.in >= 0.5)) continue;
     const items = [];
+    o.hol.forEach(n => items.push(`<div class="mkitem"><span class="mki mkho">★</span><b>${escH(n)}</b> <span class="muted small">holiday / peak</span></div>`));
     if (o.snow && o.snow.in >= 0.5) items.push(`<div class="mkitem"><span class="mki mksn">❄</span>${o.snow.in}" snow forecast at ${escH(o.snow.loc)}${o.snow.town ? ` · town ${o.snow.town.snow_in ?? 0}", ${o.snow.town.high_f ?? "—"}°/${o.snow.town.low_f ?? "—"}°` : ""} <a class="src" href="${escH(o.snow.url)}" target="_blank" rel="noopener">NWS</a> <span class="muted src">${new Date(o.snow.cap).toLocaleString()}</span></div>`);
     o.notes.forEach(e => items.push(`<div class="mkitem"><span class="mki mknt">✎</span><b class="${e.impact === "high" ? "imp-high" : ""}">${escH(e.title)}</b> <span class="pill ${e.impact === "high" ? "hi" : ""}">${escH(e.category || "Note")} · ${escH(e.impact || "medium")}</span>${e.end_date && e.end_date !== e.start_date ? ` <span class="muted small">${e.start_date} → ${e.end_date}</span>` : ""}
       ${e.notes ? `<div class="muted small">${escH(e.notes)}</div>` : ""}<div class="src">${e.url ? `<a href="${escH(e.url)}" target="_blank" rel="noopener">source</a>` : `<span class="muted">no link · approved by ${escH(e.approved_by)}</span>`} <span class="muted">added by ${escH(e.created_by)}, ${new Date(e.captured_at).toLocaleDateString()}</span> <button class="xbtn" data-hide="${e.id}" title="Hide this note">×</button></div></div>`));
