@@ -119,29 +119,6 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div class="cal2" id="cal2"></div>
     <div id="results"></div>
   </div>
-  <div class="card" id="market">
-    <div class="mkbar"><h2>3 · Local market</h2>
-      <button class="mkchip ev" data-mk="ev"><span class="mki mkev">⚑</span>Events</button>
-      <button class="mkchip sn" data-mk="snow"><span class="mki mksn">❄</span>Snow forecast</button>
-      <button class="mkchip ho" data-mk="hol"><span class="mki mkho">★</span>Holidays</button>
-      <button class="mkchip ht" data-mk="hotel"><span class="mki mkht">🏨</span>Hotels</button>
-      <button class="mkchip nt" data-mk="notes"><span class="mki mknt">✎</span>Our notes</button>
-      <label class="mkchk"><input type="checkbox" id="mkSlc"> Show all Ticketmaster events (incl. Salt Lake clubs &amp; arenas)</label>
-      <span class="sp"></span><button class="tab" id="mkList">Show list</button> <button class="tab on" id="mkAddBtn">+ Add event / news</button></div>
-    <p class="small muted" id="mkInfo" style="margin:8px 0 0"></p>
-    <div id="mkAdd" class="hidden"><div class="mkform">
-      <div><label>What's happening *</label><input id="mkTitle" placeholder="e.g. World Cup aerials at Deer Valley"></div>
-      <div><label>Starts *</label><input id="mkStart" type="date"></div>
-      <div><label>Ends</label><input id="mkEnd" type="date"></div>
-      <div><label>Type</label><select id="mkCat"><option>Event</option><option>News</option><option>Ski race / competition</option><option>Concert / show</option><option>Conference / group</option><option>School break / holiday</option><option>Road / construction</option><option>Resort / lift news</option><option>Other</option></select></div>
-      <div><label>Expected demand</label><select id="mkImp"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></div>
-      <div style="grid-column:1/-1"><label>Source link (news article, event page) *</label><input id="mkUrl" type="url" placeholder="https://..."></div>
-      <div style="grid-column:1/-1"><label>Notes</label><textarea id="mkNotes" rows="2" placeholder="What we're hearing, who told us, why it matters for pricing"></textarea></div>
-      <div style="grid-column:1/-1"><label class="mkchk"><input type="checkbox" id="mkNoLink"> No link — I'm Kim or Brandon and I approve adding this without a source</label></div>
-    </div><div style="display:flex;gap:8px;margin-top:8px"><button class="tab on" id="mkSave">Save</button><button class="tab" id="mkCancel">Cancel</button><span id="mkMsg" class="small muted" style="align-self:center"></span></div></div>
-    <div id="mkPanel" class="hidden" style="margin-top:8px"></div>
-  </div>
-  <details class="card" id="hotCard"><summary style="cursor:pointer"><b>🏨 Hotel rates near our homes</b> <span id="hotSum" class="small muted"></span> <span class="small" style="color:var(--teal2)">click to open</span></summary><div id="hotBody" style="margin-top:10px"></div></details>
   <div class="card" id="ours"></div>
   <div id="flags" class="hidden"></div>
   <div class="card" id="secAirbnb"><h2>Airbnb <span class="pill">ESTIMATE</span></h2>
@@ -169,6 +146,29 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
   <div class="card hidden"><h2>Comp calendar fill — next 180 nights <span class="pill">ESTIMATE</span></h2>
     <p class="small muted">Share of comps blocked each night on Airbnb (blocked ≠ booked). Darker = Fri/Sat. Red dot = our home is open that night.</p>
     <div class="chart" id="fill"></div><div class="axis" id="fillaxis"></div></div>
+  <div class="card" id="market">
+    <div class="mkbar"><h2>Local market <span class="muted small">info</span></h2>
+      <button class="mkchip ev" data-mk="ev"><span class="mki mkev">⚑</span>Events</button>
+      <button class="mkchip sn" data-mk="snow"><span class="mki mksn">❄</span>Snow forecast</button>
+      <button class="mkchip ho" data-mk="hol"><span class="mki mkho">★</span>Holidays</button>
+      <button class="mkchip ht" data-mk="hotel"><span class="mki mkht">🏨</span>Hotels</button>
+      <button class="mkchip nt" data-mk="notes"><span class="mki mknt">✎</span>Our notes</button>
+      <label class="mkchk"><input type="checkbox" id="mkSlc"> Show all Ticketmaster events (incl. Salt Lake clubs &amp; arenas)</label>
+      <span class="sp"></span><button class="tab" id="mkList">Show list</button> <button class="tab on" id="mkAddBtn">+ Add event / news</button></div>
+    <p class="small muted" id="mkInfo" style="margin:8px 0 0"></p>
+    <div id="mkAdd" class="hidden"><div class="mkform">
+      <div><label>What's happening *</label><input id="mkTitle" placeholder="e.g. World Cup aerials at Deer Valley"></div>
+      <div><label>Starts *</label><input id="mkStart" type="date"></div>
+      <div><label>Ends</label><input id="mkEnd" type="date"></div>
+      <div><label>Type</label><select id="mkCat"><option>Event</option><option>News</option><option>Ski race / competition</option><option>Concert / show</option><option>Conference / group</option><option>School break / holiday</option><option>Road / construction</option><option>Resort / lift news</option><option>Other</option></select></div>
+      <div><label>Expected demand</label><select id="mkImp"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></div>
+      <div style="grid-column:1/-1"><label>Source link (news article, event page) *</label><input id="mkUrl" type="url" placeholder="https://..."></div>
+      <div style="grid-column:1/-1"><label>Notes</label><textarea id="mkNotes" rows="2" placeholder="What we're hearing, who told us, why it matters for pricing"></textarea></div>
+      <div style="grid-column:1/-1"><label class="mkchk"><input type="checkbox" id="mkNoLink"> No link — I'm Kim or Brandon and I approve adding this without a source</label></div>
+    </div><div style="display:flex;gap:8px;margin-top:8px"><button class="tab on" id="mkSave">Save</button><button class="tab" id="mkCancel">Cancel</button><span id="mkMsg" class="small muted" style="align-self:center"></span></div></div>
+    <div id="mkPanel" class="hidden" style="margin-top:8px"></div>
+  </div>
+  <details class="card" id="hotCard"><summary style="cursor:pointer"><b>🏨 Hotel rates near our homes</b> <span id="hotSum" class="small muted"></span> <span class="small" style="color:var(--teal2)">click to open</span></summary><div id="hotBody" style="margin-top:10px"></div></details>
   <div class="card"><h2>Add a comp</h2>
     <p class="small muted">Paste an Airbnb, VRBO or direct-booking link. The ThinkStation reads it within about 30 minutes (manager, beds, sleeps, and the same home's other links when the page shows them). Then add it to the comps.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="newurl" type="url" placeholder="https://www.airbnb.com/rooms/..." style="flex:1;min-width:240px"><button class="tab on" id="addcomp">Add to this set</button></div>
