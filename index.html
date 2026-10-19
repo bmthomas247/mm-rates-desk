@@ -111,6 +111,10 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
 </div>
 
 <main id="app" class="hidden">
+  <div class="card" id="weekly" style="padding:10px 14px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Weekly · Colleen</b>
+    <button class="tab on" id="colleenBtn" title="Builds the clean rate + minimum-stay sheet for every neighborhood (no comp data on it)">Build Colleen sheet (all neighborhoods)</button>
+    <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
+    <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
   <div class="setnav"><h2 style="margin:0 0 8px">1 · Pick a neighborhood or home</h2><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">2 · Pick dates</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
@@ -233,6 +237,7 @@ async function boot() {
   sets.sort((a, b) => cx(a.name).localeCompare(cx(b.name)) || (([x1, y1], [x2, y2]) => x1 - x2 || y1 - y2)(typeKey(split(a.name)[1]), typeKey(split(b.name)[1])));
   state.sets = sets;
   loadMarket(); $("hotCard").addEventListener("toggle", renderHotels);
+  $("colleenBtn").onclick = buildColleenSheet; $("landBtn").onclick = didItLand;
   const groups = [];
   for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
     if (g && g.c === c) g.items.push([s, t]); else groups.push({ c, items: [[s, t]] }); }
@@ -1084,10 +1089,22 @@ function renderHotels() {
   const hit = days.map((k, i) => `<rect data-hk="${k}" x="${x(i) - 5}" y="${T}" width="10" height="${Ht - T - B}" fill="transparent" style="cursor:pointer"><title>${k}${by(pc, k) ? ` · Park City hotels $${Math.round(pre(by(pc, k)))} (${by(pc, k).hotels} with rooms)` : ""}${by(hb, k) ? ` · Heber $${Math.round(pre(by(hb, k)))}` : ""}${comp[i] ? ` · ${state.set.name} comps $${Math.round(comp[i])}` : ""}</title></rect>`).join("");
   const cnt = days.map((k, i) => { const h = by(pc, k); return h ? `<rect x="${x(i) - 3}" y="${60 - h.hotels * 2.5}" width="6" height="${h.hotels * 2.5}" fill="#0e7c66" opacity=".6"><title>${k}: ${h.hotels} Park City hotels showing rooms</title></rect>` : ""; }).join("");
   $("hotBody").innerHTML = `<div class="legend"><span><i style="background:#0e7c66;height:3px"></i>Park City hotels, median before tax</span><span><i style="background:#0e7c66;opacity:.2;height:10px"></i>middle half of Park City hotels</span><span><i style="background:#c98a1b;height:3px"></i>Heber / Jordanelle hotels</span>${state.set && adrMode() ? `<span><i style="background:#7c5cc4;height:3px"></i>${escH(state.set.name)} comps, daily rate (ADR)</span>` : ""}</div>
-    <svg viewBox="0 0 ${W} ${Ht}" style="width:100%;height:auto">${grid}${band}${line(k => by(pc, k) && pre(by(pc, k)), "#0e7c66")}${line(k => by(hb, k) && pre(by(hb, k)), "#c98a1b")}${line((k, i) => comp[i], "#7c5cc4", true)}${dots(pc, "#0e7c66")}${dots(hb, "#c98a1b")}${ticks}${hit}</svg>
+    <div class="dchart" id="hotChart"><svg viewBox="0 0 ${W} ${Ht}" style="width:100%;height:auto">${grid}${band}${line(k => by(pc, k) && pre(by(pc, k)), "#0e7c66")}${line(k => by(hb, k) && pre(by(hb, k)), "#c98a1b")}${line((k, i) => comp[i], "#7c5cc4", true)}${dots(pc, "#0e7c66")}${dots(hb, "#c98a1b")}${ticks}<line class="xh" y1="${T}" y2="${Ht - B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>${hit}</svg><div class="tip"></div></div>
     <div class="small muted" style="margin:6px 0 2px">Park City hotels still showing rooms (fewer = tighter market)</div><svg viewBox="0 0 ${W} 64" style="width:100%;height:auto">${cnt}</svg>
     <div id="hotDay"><p class="small" style="color:var(--teal2)">Click a night on the chart to see every hotel and its price.</p></div>
     <p class="small muted">What this shows: the lowest nightly price Google Hotels lists for each hotel (2 adults, 2-night stay starting that night), and how many hotels still show rooms. It does <b>not</b> show hotels' booked nights. Best match for our studios and 1BRs (Prospector, Carriage House, Edelweiss, Red Pine, Westgate): a hotel room is their real competition. Pick a studio or 1BR set below to draw its comps on the chart. ${state.set && !/studio|1br/i.test(state.set.name || "") ? "This set is bigger than a hotel room, so treat the hotel line as a market-temperature gauge only. " : ""}Source: <a href="https://www.google.com/travel/hotels" target="_blank" rel="noopener">Google Hotels</a> via SerpApi, captured ${cap ? new Date(cap).toLocaleDateString() : "—"}. Vacation rentals Google mixes in are left out of the medians.</p>`;
+  { const box = $("hotChart"), svg = box.querySelector("svg"), tip = box.querySelector(".tip"), xh = box.querySelector(".xh");
+    svg.onmousemove = e => { const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) / r.width * W;
+      const i = Math.max(0, Math.min(N - 1, Math.round((sx - L) / (W - L - R) * (N - 1)))), k = days[i], hp = by(pc, k), hh = by(hb, k);
+      xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.style.display = "";
+      const ev = mkTitle(k).slice(3);
+      tip.innerHTML = `<b>${new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</b>` +
+        (hp ? `<br><span style="color:#0e7c66">Park City hotels ${fmt(pre(hp))}</span> <span class="muted">· ${hp.hotels} with rooms · middle ${fmt(hp.p25)}–${fmt(hp.p75)}</span>` : `<br><span class="muted">No Park City hotel price</span>`) +
+        (hh ? `<br><span style="color:#c98a1b">Heber hotels ${fmt(pre(hh))}</span> <span class="muted">· ${hh.hotels} with rooms</span>` : "") +
+        (comp[i] ? `<br><span style="color:#7c5cc4">${escH(state.set.name)} comps ${fmt(comp[i])}</span>` : "") + (ev ? `<br><span class="muted">${escH(ev.slice(0, 90))}</span>` : "") +
+        `<br><span class="muted small">Click for every hotel</span>`;
+      tip.style.display = "block"; const px = (x(i) / W) * r.width; tip.style.left = Math.min(px + 12, r.width - 230) + "px"; tip.style.top = "10px"; };
+    svg.onmouseleave = () => { tip.style.display = "none"; xh.style.display = "none"; }; }
   $("hotBody").querySelector("svg").onclick = async e => { const k = e.target.dataset?.hk; if (!k) return;
     $("hotDay").innerHTML = `<p class="small muted">Loading ${k}…</p>`;
     const { data, error } = await sb.from("hotel_rates").select("area,name,type,hotel_class,rating,reviews,rate_night,rate_night_pre_tax,cheapest_source,link,run_id,captured_at,search_url").eq("check_in", k).order("rate_night");
@@ -1121,6 +1138,128 @@ function renderRangeMk() {
   if (hm != null) { const d = typ ? (hm / typ - 1) * 100 : null, tight = typN && hn != null && hn <= typN * 0.7;
     items.push(`<div class="mkitem"><span class="mki mkht">🏨</span>Park City hotels <b>$${Math.round(hm)}</b>/night${d != null && Math.abs(d) >= 5 ? ` <b class="${d > 0 ? "down" : "up"}">${pct(d)} vs a typical night</b>` : " (about normal)"}${tight ? ` · only ${hn} hotels showing rooms (usually ${Math.round(typN)}): <b>tight</b>` : ""} <span class="muted small">Google Hotels via SerpApi</span></div>`); }
   el.innerHTML = `<div class="card" style="margin:10px 0 0;background:var(--bg)"><h3 class="chh" style="margin-top:0">What's happening ${R.ci} → ${R.co}</h3>${items.length ? items.join("") : `<p class="small muted" style="margin:0">Nothing special on the calendar for these dates. Demand here is mostly season and day of week.</p>`}</div>`;
+}
+// ---------- Weekly Colleen sheet (Brandon 2026-10-19): one click builds the clean rate + minimum-stay sheet for every neighborhood ----------
+// Same pricing logic as "Generate pricing report", run set by set. The sheet shows homes, current rate, new rate, $ and % only (no comp data:
+// Brandon's rule for anything Colleen sees). Each build is also saved to colleen_requests so "Did it land?" can check it next week.
+function repNights(win) { // win: { name, nights[], peak }
+  const CH = ["Airbnb", "VRBO", "Direct"], all = state.allChecks || state.checks, avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const comps = {}, ours = {};
+  for (const r of all) { if (!priced(r)) continue; const pn = (r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total) / r.nights;
+    for (let i = 0; i < r.nights; i++) { const k = addD(r.check_in, i);
+      if (r.tier === "Ours") { const o = ((ours[r.comp_id] ||= {})[k] ||= {}); (o[r.channel] ||= []).push(pn); if (r.channel === "Direct" && r.rent) (o.rent ||= []).push(r.rent / r.nights); }
+      else (((comps[k] ||= {})[r.channel] ||= {})[r.comp_id] ||= []).push(pn); } }
+  const out = [];
+  for (const h of state.comps.filter(c => c.tier === "Ours")) { const hb = homeBookings(h.id), nights = win.nights;
+    const off = !win.peak && nights.filter(offOf).length >= Math.min(4, nights.length);
+    const ch = {};
+    for (const name of CH) { const med = [], lo = [], hi = [], top = [], our = [];
+      for (const k of nights) { const c = Object.values(comps[k]?.[name] || {}).map(v => avg(v));
+        if (c.length >= 2) { med.push(median(c)); lo.push(quant(c, .25)); hi.push(quant(c, .75)); top.push(quant(c, .9)); }
+        const o = ours[h.id]?.[k]?.[name]; if (o) our.push(avg(o)); }
+      const x = { med: avg(med), lo: avg(lo), hi: avg(hi), top: avg(top), ours: avg(our), n: med.length };
+      x.target = x.med == null ? null : win.peak ? Math.max(x.med, x.top ?? x.hi ?? x.med) : off ? x.lo ?? x.med : x.med;
+      x.ratio = x.target && x.ours ? x.target / x.ours : null; ch[name] = x; }
+    const rent = avg(nights.map(k => ours[h.id]?.[k]?.rent && avg(ours[h.id][k].rent)).filter(v => v != null));
+    const ratios = CH.map(n => ch[n].ratio).filter(v => v != null), ratio = ratios.length ? avg(ratios) : null;
+    const ref = ch.Airbnb.ours != null && ch.Airbnb.med != null ? ch.Airbnb : ch.Direct.ours != null && ch.Direct.med != null ? ch.Direct : null;
+    const highest = ref && ref.ours > (ref.top ?? ref.hi);
+    const open = nights.filter(k => !hb.night[k]).length;
+    out.push({ h, rent, sug: rent != null && ratio != null ? rent * ratio : null, n: ref ? ref.n : 0, open, highest });
+  }
+  return out;
+}
+function minChanges(horizon) { // our 4+ night minimums that block more than the comps do (Brandon 2026-10-14 rules)
+  const all = state.allChecks || state.checks, today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, horizon), out = [];
+  const peakName = k => peakOf(k) || holOf(k).find(n => !/^Utah|^Opening day|^Hanukkah/.test(n)) || null;
+  const eventNight = k => KEY_EVENTS.some(([a, b]) => k >= a && k <= b);
+  const share = (a, b) => { const v = all.filter(r => r.tier !== "Ours" && r.channel === "Airbnb" && r.nights === 2 && r.check_in >= a && r.check_in <= b && (r.status === "min_stay" || r.status === "available"));
+    return v.length ? v.filter(r => r.status === "min_stay").length / v.length : null; };
+  for (const h of state.comps.filter(c => c.tier === "Ours")) {
+    const mins = all.filter(r => r.comp_id === h.id && r.status === "min_stay" && r.min_nights >= 4 && r.check_in >= today && r.check_in <= end);
+    const groups = {};
+    for (const r of mins) { const pk = peakName(r.check_in), key = pk ? "P:" + pk : r.min_nights >= 30 ? "X:" + r.check_in : eventNight(r.check_in) ? null : "N";
+      if (!key) continue; const g = (groups[key] ||= { a: r.check_in, b: r.check_in, max: 0, dates: new Set() }); g.a = r.check_in < g.a ? r.check_in : g.a; g.b = r.check_in > g.b ? r.check_in : g.b; g.max = Math.max(g.max, r.min_nights); g.dates.add(r.check_in); }
+    for (const [key, g] of Object.entries(groups)) {
+      if (key.startsWith("P:")) { const pk = PEAKS.find(p => p[2] === key.slice(2)), sh = share(pk ? pk[0] : g.a, pk ? pk[1] : g.b);
+        if (/Christmas|New Year|Presidents|MLK/.test(key)) continue;            // keep the big-holiday minimums
+        if (g.max >= 4 && (sh == null || sh < 0.5)) out.push({ h, win: key.slice(2), a: pk ? pk[0] : g.a, b: pk ? pk[1] : g.b, cur: g.max, new: 3, note: "Open up 3-night stays" }); }
+      else if (key.startsWith("X:")) out.push({ h, win: new Date(g.a + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }), a: g.a, b: g.b, cur: g.max, new: 2, note: "Looks like a calendar-end setting; please check" });
+      else { const ds = [...g.dates].sort(), lab = ds.slice(0, 6).map(k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })).join(", ") + (ds.length > 6 ? ` +${ds.length - 6} more` : "");
+        out.push({ h, win: "Non-holiday nights: " + lab, a: g.a, b: g.b, cur: g.max, new: g.max >= 5 ? 3 : 3, note: g.max >= 5 ? "Long minimum outside a holiday" : "Keep 4 only on holiday/event nights" }); }
+    }
+  }
+  return out;
+}
+async function buildColleenSheet() {
+  const btn = $("colleenBtn"), msg = $("weeklyMsg"), keep = state.set?.id; btn.disabled = true;
+  try {
+    if (!window.XLSX) { msg.textContent = "Loading spreadsheet tool…"; await new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }); }
+    const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const range = (a, b) => { const o = []; for (let k = a; k <= b; k = addD(k, 1)) o.push(k); return o; };
+    const wins = [];
+    for (const [a, b, name] of PEAKS) if (b >= today && a <= addD(today, 120)) { const a2 = a < today ? today : a; wins.push({ name: `${name} (${fd(a2)} – ${fd(b)})`, short: name, a: a2, b, nights: range(a2, b), peak: name }); }
+    for (let c = 0; c < 3; c++) { const a = addD(today, c * 30), b = addD(today, c * 30 + 29), nights = range(a, b).filter(k => !peakOf(k));
+      if (nights.length) wins.push({ name: `${fd(a)} – ${fd(b)}`, short: `${fd(a)} – ${fd(b)}`, a, b, nights, peak: null }); }
+    const rows = wins.map(() => []), mins = [], sets = state.sets.filter(x => x.active !== false), r5 = v => Math.round(v / 5) * 5;
+    for (let i = 0; i < sets.length; i++) { msg.textContent = `Working… ${i + 1} of ${sets.length} neighborhoods`;
+      await load(sets[i].id); const setName = state.set.name;
+      wins.forEach((w, j) => { for (const r of repNights(w)) {
+        if (r.rent == null || r.sug == null || r.n < 5 || r.open === 0) continue;
+        const chg = r.sug / r.rent - 1; let act = chg >= 0.05 ? "Raise" : chg <= -0.05 ? "Lower" : null; if (!act) continue;
+        if (act === "Lower" && w.peak && !r.highest) continue;               // never undercut a holiday we're not already topping
+        let nu = r5(r.sug), note = "";
+        if (act === "Raise" && chg > 0.5) { nu = r5(r.rent + (r.sug - r.rent) / 2); note = `Step 1. Go to $${r5(r.sug).toLocaleString()} if it books`; }
+        if (act === "Lower" && chg < -0.25) { nu = r5(r.rent * 0.75); note = "Step 1 (max 25% cut). Re-check in 2 weeks"; }
+        if (act === "Lower" && w.peak) note = "Holiday: hold until 3 days out, then no lower than a normal ski-season rate";
+        rows[j].push({ set: setName, setId: state.set.id, comp: r.h.id, home: (r.h.label || "").replace(/\s*\(.*\)\s*$/, ""), act, cur: r5(r.rent), nu, note, w }); } });
+      for (const m of minChanges(180)) mins.push({ set: setName, setId: state.set.id, comp: m.h.id, home: (m.h.label || "").replace(/\s*\(.*\)\s*$/, ""), ...m });
+    }
+    const wb = XLSX.utils.book_new(), stamp = today;
+    wins.forEach((w, j) => { const list = rows[j].sort((x, y) => (x.act !== "Raise") - (y.act !== "Raise") || Math.abs(y.nu - y.cur) - Math.abs(x.nu - x.cur));
+      const aoa = [[`Nightly rate changes · ${w.name}`], [], ["Neighborhood", "Home", "Change", "Current nightly rate", "New nightly rate", "$ / night", "%", "Notes", "Done?"],
+        ...list.map(r => [r.set, r.home, r.act, r.cur, r.nu, r.nu - r.cur, Math.round((r.nu / r.cur - 1) * 100) / 100, r.note, ""])];
+      const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [30, 16, 9, 12, 12, 10, 8, 34, 8].map(w => ({ wch: w }));
+      for (let r = 3; r < aoa.length; r++) { for (const c of ["D", "E", "F"]) if (ws[c + (r + 1)]) ws[c + (r + 1)].z = "$#,##0"; if (ws["G" + (r + 1)]) ws["G" + (r + 1)].z = "+0%;-0%;0%"; }
+      XLSX.utils.book_append_sheet(wb, ws, w.short.replace(/[\\/?*[\]:]/g, "").slice(0, 31)); });
+    const maoa = [["Minimum-stay changes"], [], ["Neighborhood", "Home", "Dates", "Current minimum", "New minimum", "Notes", "Done?"], ...mins.map(m => [m.set, m.home, m.win, m.cur, m.new, m.note, ""]), [],
+      ["Keep as is: Christmas – New Year, MLK and Presidents Day minimums, and 4-night minimums on key event nights."]];
+    const mws = XLSX.utils.aoa_to_sheet(maoa); mws["!cols"] = [30, 22, 46, 11, 11, 44, 8].map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, mws, "Minimum stays");
+    XLSX.writeFile(wb, `MM-Rate-and-Minimum-Changes-${stamp}.xlsx`);
+    // remember what we asked for, for "Did it land?"
+    const req = [...rows.flatMap(list => list.map(r => ({ batch: stamp, set_id: r.setId, comp_id: r.comp, home: r.home, kind: "rate", win: r.w.name, a: r.w.a, b: r.w.b, cur: r.cur, new: r.nu, note: r.note || null }))),
+      ...mins.map(m => ({ batch: stamp, set_id: m.setId, comp_id: m.comp, home: m.home, kind: "min", win: m.win, a: m.a, b: m.b, cur: m.cur, new: m.new, note: m.note }))];
+    let saved = 0, err = null; for (let i = 0; i < req.length; i += 400) { const { error } = await sb.from("colleen_requests").insert(req.slice(i, i + 400)); if (error) { err = error.message; break; } saved += Math.min(400, req.length - i); }
+    msg.innerHTML = `Done: ${rows.reduce((a, l) => a + l.length, 0)} rate changes, ${mins.length} minimum changes. Downloaded <b>MM-Rate-and-Minimum-Changes-${stamp}.xlsx</b>. ${err ? `<span class="up">Couldn't save for "Did it land?": ${escH(err)}</span>` : `Saved for "Did it land?" (${saved}).`}`;
+  } catch (e) { msg.innerHTML = `<span class="up">Sheet failed: ${escH(e.message || e)}</span>`; }
+  finally { btn.disabled = false; if (keep) await load(keep); }
+}
+async function didItLand() {
+  const msg = $("weeklyMsg"), out = $("landOut");
+  const last = await sb.from("colleen_requests").select("batch").order("batch", { ascending: false }).limit(1);
+  const batch = last.data?.[0]?.batch; if (!batch) { msg.textContent = "No sheet saved yet. Build one first."; return; }
+  msg.textContent = `Checking the ${batch} sheet against Track (takes about 30 seconds)…`;
+  const { data, error } = await sb.rpc("request_check", { p_batch: batch });
+  if (error) { msg.innerHTML = `<span class="up">${escH(error.message)}</span>`; return; }
+  const st = r => { if (r.kind === "min") return r.now_val == null || +r.now_val <= +r.new ? "Landed" : "Not yet";
+    if (r.now_val == null) return "No live price (booked or closed)";
+    const nv = +r.now_val, cur = +r.cur, nw = +r.new;
+    if (Math.abs(nv - nw) / nw <= 0.07) return "Landed";
+    if ((nv - cur) * (nw - cur) > 0 && Math.abs(nv - cur) >= 0.3 * Math.abs(nw - cur)) return "Part way";
+    if ((nv - cur) * (nw - cur) < 0 && Math.abs(nv - cur) / cur > 0.05) return "Moved the wrong way";
+    return "Not yet"; };
+  const rows = (data || []).map(r => ({ ...r, st: st(r) })), order = ["Moved the wrong way", "Not yet", "Part way", "Landed", "No live price (booked or closed)"];
+  const wins = [...new Set(rows.map(r => r.kind === "min" ? "Minimum stays" : r.win))];
+  const cnt = (list, s) => list.filter(r => r.st === s).length;
+  const summary = `<div class="wrap"><table><tr><th>Window</th><th>Asked</th><th>Landed</th><th>Part way</th><th>Not yet</th><th>Wrong way</th><th>No live price</th></tr>` +
+    wins.map(w => { const l = rows.filter(r => (r.kind === "min" ? "Minimum stays" : r.win) === w);
+      return `<tr><td><b>${escH(w)}</b></td><td>${l.length}</td><td class="down">${cnt(l, "Landed")}</td><td>${cnt(l, "Part way")}</td><td class="up">${cnt(l, "Not yet")}</td><td class="up">${cnt(l, "Moved the wrong way")}</td><td class="muted">${cnt(l, order[4])}</td></tr>`; }).join("") + `</table></div>`;
+  const detail = rows.filter(r => r.st !== "Landed" && !r.st.startsWith("No live")).sort((a, b) => order.indexOf(a.st) - order.indexOf(b.st) || String(a.win).localeCompare(b.win));
+  out.innerHTML = `<h3 class="chh" style="margin-top:10px">Did it land? Sheet of ${escH(batch)} vs Track today</h3>${summary}
+    <details style="margin-top:6px"><summary class="small" style="cursor:pointer;color:var(--teal2)">Show the ${detail.length} changes still to make</summary><div class="wrap"><table><tr><th>Home</th><th>Window</th><th>Was</th><th>Asked for</th><th>Track now</th><th>Status</th></tr>` +
+    detail.map(r => `<tr><td><b>${escH(r.home)}</b></td><td class="small">${escH(r.win)}</td><td>${r.kind === "min" ? r.cur + " nights" : fmt(r.cur)}</td><td>${r.kind === "min" ? r.new + " nights" : fmt(r.new)}</td><td>${r.kind === "min" ? (r.now_val ?? "—") + " nights" : fmt(r.now_val)}</td><td class="${r.st === "Part way" ? "" : "up"}">${r.st}</td></tr>`).join("") +
+    `</table></div></details><p class="small muted">Track now = average nightly rent on our direct site for those dates in the latest pull (Track, read-only); minimums = the longest minimum Track asks for on those dates. Landed = within 7% of what we asked. ESTIMATE.</p>`;
+  msg.textContent = "";
 }
 async function loadMarket() {
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
