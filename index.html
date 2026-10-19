@@ -845,12 +845,17 @@ function renderResults(pn) {
   const R = state.range;
   if (!R?.co) { $("results").innerHTML = ""; return; }
   const nights = []; for (let k = R.ci; k < R.co; k = addD(k, 1)) nights.push(k);
+  const ourIds = new Set(state.comps.filter(c => c.tier === "Ours").map(c => c.id));
   const quote = (id, ch) => {
     const exact = state.checks.find(r => r.comp_id === id && r.channel === ch && r.check_in === R.ci && r.check_out === R.co);
     if (exact && exact.status === "available") return { total: +exact.total, exact: true, url: exact.url, pre: exact.pre_tax, cap: exact.captured_at };
     if (exact && exact.status !== "min_stay") return { status: exact.status, min: exact.min_nights };
     // Not pulled for these exact dates (or under the minimum stay): build it from the nightly prices we have.
     const per = pn[id]?.[ch];
+    if (per && ourIds.has(id) && !nights.every(k => per[k])) { // our homes: Track only gives us sample stays, so fill from the nights we have (2026-10-19)
+      const got = nights.filter(k => per[k]); if (got.length >= Math.ceil(nights.length / 2)) {
+        const avgN = got.reduce((a, k) => a + per[k].reduce((x, y) => x + y, 0) / per[k].length, 0) / got.length;
+        return { total: avgN * nights.length, exact: false, pre: ch !== "Direct", min: exact?.min_nights, part: `${got.length} of ${nights.length} nights priced` }; } }
     if (!per || !nights.every(k => per[k])) return exact ? { status: exact.status, min: exact.min_nights } : null;
     const tot = nights.reduce((a, k) => a + per[k].reduce((x, y) => x + y, 0) / per[k].length, 0);
     return { total: tot, exact: false, pre: ch !== "Direct", min: exact?.min_nights };
@@ -875,7 +880,7 @@ function renderResults(pn) {
   const chMed = {}; for (const ch of ["Airbnb", "VRBO", "Direct"]) chMed[ch] = median(rows.filter(r => r.c.tier === "Primary" && r.q[ch]?.total).map(r => r.q[ch].total));
   const cell = (q, ch, ours) => !q ? '<span class="muted small">—</span>' : q.status ? `<span class="muted small">${q.status}${q.min ? " · min " + q.min : ""}</span>` :
     `${(() => { const g = ours && chMed[ch] ? (q.total / chMed[ch] - 1) * 100 : null; const off = g != null && Math.abs(g) >= 15;
-      const t = `<b${off ? ' class="up"' : ""}>${fmt(q.total)}</b>`; return (q.url ? `<a href="${q.url}" target="_blank" rel="noopener">${t}</a>` : t) + (off ? ` <span class="up small">${g > 0 ? "too high" : "too low"} (${pct(g)})</span>` : ""); })()}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}${q.min && q.min > nights.length ? ` <span class="muted small">min ${q.min} nights</span>` : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night</span>`;
+      const t = `<b${off ? ' class="up"' : ""}>${fmt(q.total)}</b>`; return (q.url ? `<a href="${q.url}" target="_blank" rel="noopener">${t}</a>` : t) + (off ? ` <span class="up small">${g > 0 ? "too high" : "too low"} (${pct(g)})</span>` : ""); })()}${q.exact ? "" : ' <span class="pill">ESTIMATE</span>'}${q.pre ? ' <span class="pill">PRE-TAX</span>' : ""}${q.min && q.min > nights.length ? ` <span class="muted small">min ${q.min} nights</span>` : ""}<br><span class="muted small">${fmt(q.total / nights.length)}/night${q.part ? " · " + q.part : ""}</span>`;
   const compAb = rows.filter(r => r.c.tier === "Primary" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
   const ourAb = rows.filter(r => r.c.tier === "Ours" && r.q.Airbnb?.total).map(r => r.q.Airbnb.total);
   const primRows = rows.filter(r => r.c.tier === "Primary" && r.st);
@@ -890,7 +895,7 @@ function renderResults(pn) {
       <div class="tile"><span>Comps blocked</span><b>${blockedPct == null ? "—" : Math.round(blockedPct) + "%"}</b><span>ESTIMATE</span></div>
       <div class="tile"><span>Our homes open</span><b>${oursRows.length ? oursRows.filter(r => r.st === "open").length + " of " + oursRows.length : "—"}</b></div></div>
     <div class="wrap"><table id="restable"><tr><th>Home</th>${th("host", "Property manager")}<th>Calendar</th>${th("Airbnb", "Airbnb")}${th("VRBO", "VRBO")}${th("Direct", "Direct")}</tr>` +
-    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td>${r.c.tier === "Ours" ? `<b>${r.c.label}</b>` : addrCell(r.c)}</td><td>${r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb, "Airbnb", r.c.tier === "Ours")}</td><td>${cell(r.q.VRBO, "VRBO", r.c.tier === "Ours")}</td><td>${cell(r.q.Direct, "Direct", r.c.tier === "Ours")}</td></tr>`).join("") +
+    rows.map(r => `<tr class="${r.c.tier === "Ours" ? "ourrow" : ""}"><td>${r.c.tier === "Ours" ? `<b>${escH((r.c.label || "").replace(/\s*\(.*$/, ""))}</b>` : addrCell(r.c)}</td><td>${r.c.tier === "Ours" ? "Moose Management" : r.c.host || '<span class="muted">unknown</span>'}</td><td>${r.st || '<span class="muted small">—</span>'}</td><td>${cell(r.q.Airbnb, "Airbnb", r.c.tier === "Ours")}</td><td>${cell(r.q.VRBO, "VRBO", r.c.tier === "Ours")}</td><td>${cell(r.q.Direct, "Direct", r.c.tier === "Ours")}</td></tr>`).join("") +
     `</table></div><p class="small muted">Exact = we pulled this exact stay (click the price for its source page). ESTIMATE = built from the nightly prices of pulled stays that cover these nights. Calendar from Airbnb (blocked ≠ booked).</p>`;
   $("restable").onclick = e => { const h = e.target.closest("th[data-sort]"); if (!h) return;
     const k = h.dataset.sort; state.sort = { key: k, dir: sk.key === k ? -sk.dir : 1 }; renderResults(pn); };
