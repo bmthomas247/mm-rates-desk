@@ -1008,16 +1008,17 @@ function render() {
   // Our comps list
   const pnC = nightData(), today30 = rangeNights() || []; if (!today30.length) for (let i = 0; i < 30; i++) today30.push(addD(iso(new Date(new Date().setHours(12, 0, 0, 0))), i));
   const comps = state.comps.filter(c => c.tier !== "Ours").sort((a, b) => (a.address || "~" + a.label).localeCompare(b.address || "~" + b.label, undefined, { numeric: true }));
+  const oursC = state.comps.filter(c => c.tier === "Ours").sort((a, b) => (a.label || "").localeCompare(b.label || "", undefined, { numeric: true }));
   $("compCount").textContent = `(${comps.length} total)`;
   $("grid").innerHTML = `<tr><th></th><th>Address</th><th>Property manager</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>${rangeNights() ? "Blocked on your dates" : "Blocked next 30"}</th><th>Avg rate / night</th><th>Notes</th></tr>` +
-    comps.map(c => {
+    [...oursC, ...comps].map(c => { const mine = c.tier === "Ours";
       const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
       const v = []; for (const [name, days] of Object.entries(pnC[c.id] || {})) for (const k of today30) if (days[k]) v.push(days[k].reduce((x, y) => x + y, 0) / days[k].length * (name === "Airbnb" ? 1 + AIRBNB_TAX : 1));
       const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>");
-      return `<tr><td><button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button></td><td>${addrCell(c)}</td><td>${c.host || '<span class="muted">unknown</span>'}</td>
+      return `<tr${mine ? ' style="background:var(--ours-bg, rgba(14,124,102,.08))"' : ""}><td>${mine ? '<span class="pill">Ours</span>' : `<button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button>`}</td><td>${addrCell(mine ? { ...c, label: (c.label || "").replace(/\s*\(.*$/, "") } : c)}</td><td>${mine ? "Moose Management" : c.host || '<span class="muted">unknown</span>'}</td>
         <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
         <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
-        <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${c.notes || ""}</td></tr>`;
+        <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${escH((c.notes || "").replace(/\s*\((?:owner|Owner)[^)]*\)/g, ""))}</td></tr>${mine && c === oursC[oursC.length - 1] ? `<tr><td colspan="8" class="muted small" style="padding-top:10px">Comps</td></tr>` : ""}`;
     }).join("");
   state.checks = state.allChecks || state.checks;
   $("grid").onclick = async e => {
