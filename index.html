@@ -111,9 +111,10 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
 </div>
 
 <main id="app" class="hidden">
-  <div class="card" id="weekly" style="padding:10px 14px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Weekly · Colleen</b>
-    <button class="tab on" id="colleenBtn" title="Builds the clean rate + minimum-stay sheet for every neighborhood (no comp data on it)">Build Colleen sheet (all neighborhoods)</button>
+  <div class="card" id="weekly" style="padding:10px 14px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Weekly · Kolleen</b>
+    <button class="tab on" id="colleenBtn" title="Builds the clean rate + minimum-stay sheet for every neighborhood (no comp data on it)">Build Kolleen sheet (all neighborhoods)</button>
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
+    <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
     <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
   <div class="setnav"><h2 style="margin:0 0 8px">1 · Pick a neighborhood or home</h2><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
@@ -237,7 +238,7 @@ async function boot() {
   sets.sort((a, b) => cx(a.name).localeCompare(cx(b.name)) || (([x1, y1], [x2, y2]) => x1 - x2 || y1 - y2)(typeKey(split(a.name)[1]), typeKey(split(b.name)[1])));
   state.sets = sets;
   loadMarket(); $("hotCard").addEventListener("toggle", renderHotels);
-  $("colleenBtn").onclick = buildColleenSheet; $("landBtn").onclick = didItLand;
+  $("colleenBtn").onclick = buildColleenSheet; $("landBtn").onclick = didItLand; $("matchBtn").onclick = reviewMatches;
   const groups = [];
   for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
     if (g && g.c === c) g.items.push([s, t]); else groups.push({ c, items: [[s, t]] }); }
@@ -1266,6 +1267,29 @@ async function didItLand() {
     detail.map(r => `<tr><td><b>${escH(r.home)}</b></td><td class="small">${escH(r.win)}</td><td>${r.kind === "min" ? r.cur + " nights" : fmt(r.cur)}</td><td>${r.kind === "min" ? r.new + " nights" : fmt(r.new)}</td><td>${r.kind === "min" ? (r.now_val ?? "—") + " nights" : fmt(r.now_val)}</td><td class="${r.st === "Part way" ? "" : "up"}">${r.st}</td></tr>`).join("") +
     `</table></div></details><p class="small muted">Track now = average nightly rent on our direct site for those dates in the latest pull (Track, read-only); minimums = the longest minimum Track asks for on those dates. Landed = within 7% of what we asked. ESTIMATE.</p>`;
   msg.textContent = "";
+}
+// ---------- Review matches (2026-10-19): Brandon confirms possible same-home matches across Airbnb / VRBO ----------
+async function reviewMatches() {
+  const out = $("landOut"), msg = $("weeklyMsg"); msg.textContent = "Loading matches…";
+  const { data, error } = await sb.rpc("pending_matches");
+  if (error) { msg.innerHTML = `<span class="up">${escH(error.message)}</span>`; return; }
+  msg.textContent = "";
+  const setName = id => (state.sets.find(x => x.id === id) || {}).name || id;
+  const lk = (u, t) => `<a href="${escH(u)}" target="_blank" rel="noopener">${escH(t)}</a>`;
+  const linksOf = v => (v || "").split(" ").filter(Boolean).map(x => { const i = x.indexOf("|"); return lk(x.slice(i + 1), x.slice(0, i)); }).join(" · ");
+  if (!data.length) { out.innerHTML = `<p class="small muted" style="margin-top:8px">Nothing waiting. All matches are decided.</p>`; return; }
+  out.innerHTML = `<h3 class="chh" style="margin-top:10px">Review matches · ${data.length} waiting</h3>
+    <p class="small muted">Open both links. Same home = the same unit listed on both sites. ✓ adds the link (or merges the two comps into one); ✗ keeps them apart. Source: KeyData cross-listing match (KeyData API, pulled 2026-10-13).</p>
+    <div class="wrap"><table id="mtab"><tr><th>Neighborhood</th><th>Comp we have</th><th>Possible match</th><th>Beds</th><th>Apart</th><th>Match</th><th></th></tr>` +
+    data.map(m => `<tr data-id="${m.id}"><td class="small">${escH(setName(m.set_id))}</td><td><b>${escH(m.comp_label)}</b><br><span class="small">${linksOf(m.comp_links)}</span></td>
+      <td>${m.status === "dup" ? `<span class="pill">Already a comp</span> ${escH(m.other_label || "")}<br>` : ""}<span class="small">${lk(m.url, m.channel + ": " + String(m.title_to || m.url).slice(0, 60))}</span></td>
+      <td>${m.beds_from ?? "?"} / ${m.beds_to ?? "?"}</td><td>${m.distance_m ?? "?"} m</td><td>${m.confidence == null ? "—" : Math.round(m.confidence * 100) + "%"}</td>
+      <td style="white-space:nowrap"><button class="tab" data-ok="1">Same home ✓</button> <button class="tab" data-ok="0">Not the same ✗</button></td></tr>`).join("") + `</table></div>`;
+  $("mtab").onclick = async e => {
+    const b = e.target.closest("button[data-ok]"); if (!b) return; const tr = b.closest("tr"); tr.querySelectorAll("button").forEach(x => x.disabled = true);
+    const { data: r, error } = await sb.rpc("decide_match", { mid: +tr.dataset.id, ok: b.dataset.ok === "1" });
+    tr.lastElementChild.innerHTML = error ? `<span class="up small">${escH(error.message)}</span>` : `<span class="small ${b.dataset.ok === "1" ? "down" : "muted"}">${escH(r)}</span>`;
+    tr.style.opacity = .55; for (const k in _setCache) delete _setCache[k]; };
 }
 async function loadMarket() {
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
