@@ -38,6 +38,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 8px;b
 th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:500;font-size:12px}
 tr.click{cursor:pointer}tr.click:hover td{background:var(--tealbg)}
 .wrap{overflow-x:auto}
+.wide{width:min(1640px,calc(100vw - 32px));position:relative;left:50%;transform:translateX(-50%)}
+#mtab td{white-space:normal;text-align:left;vertical-align:top}#mtab th{text-align:left}#mtab td:nth-child(2),#mtab td:nth-child(3){min-width:260px;max-width:460px}#mtab td:last-child{white-space:nowrap}
 .up{color:var(--red);font-weight:600}.down{color:var(--green);font-weight:600}
 a{color:var(--teal2)}
 .chart{display:flex;align-items:flex-end;gap:2px;height:140px;padding-top:6px;border-bottom:1px solid var(--line)}
@@ -1280,11 +1282,11 @@ async function reviewMatches() {
   if (!data.length) { out.innerHTML = `<p class="small muted" style="margin-top:8px">Nothing waiting. All matches are decided.</p>`; return; }
   out.innerHTML = `<h3 class="chh" style="margin-top:10px">Review matches · ${data.length} waiting</h3>
     <p class="small muted">Open both links. Same home = the same unit listed on both sites. ✓ adds the link (or merges the two comps into one); ✗ keeps them apart. Source: KeyData cross-listing match (KeyData API, pulled 2026-10-13).</p>
-    <div class="wrap"><table id="mtab"><tr><th>Neighborhood</th><th>Comp we have</th><th>Possible match</th><th>Beds</th><th>Apart</th><th>Match</th><th></th></tr>` +
+    <div class="wrap wide"><table id="mtab"><tr><th>Neighborhood</th><th>Comp we have</th><th>Possible match</th><th>Beds</th><th>Apart</th><th>Match</th><th></th></tr>` +
     data.map(m => `<tr data-id="${m.id}"><td class="small">${escH(setName(m.set_id))}</td><td><b>${escH(m.comp_label)}</b><br><span class="small">${linksOf(m.comp_links)}</span></td>
       <td>${m.status === "dup" ? `<span class="pill">Already a comp</span> ${escH(m.other_label || "")}<br>` : ""}<span class="small">${lk(m.url, m.channel + ": " + String(m.title_to || m.url).slice(0, 60))}</span></td>
       <td>${m.beds_from ?? "?"} / ${m.beds_to ?? "?"}</td><td>${m.distance_m ?? "?"} m</td><td>${m.confidence == null ? "—" : Math.round(m.confidence * 100) + "%"}</td>
-      <td style="white-space:nowrap"><button class="tab" data-ok="1">Same home ✓</button> <button class="tab" data-ok="0">Not the same ✗</button></td></tr>`).join("") + `</table></div>`;
+      <td style="white-space:nowrap"><button class="tab" data-ok="1">✓ Same</button> <button class="tab" data-ok="0">✗ Not</button></td></tr>`).join("") + `</table></div>`;
   $("mtab").onclick = async e => {
     const b = e.target.closest("button[data-ok]"); if (!b) return; const tr = b.closest("tr"); tr.querySelectorAll("button").forEach(x => x.disabled = true);
     const { data: r, error } = await sb.rpc("decide_match", { mid: +tr.dataset.id, ok: b.dataset.ok === "1" });
