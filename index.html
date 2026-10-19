@@ -38,9 +38,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 8px;b
 th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:500;font-size:12px}
 tr.click{cursor:pointer}tr.click:hover td{background:var(--tealbg)}
 .wrap{overflow-x:auto}
+#secComps{border:none!important;background:none!important;padding-left:0!important;padding-right:0!important}
 #weekly{border:none!important;background:none!important;padding-left:0!important;padding-right:0!important}
 .wide{width:min(1640px,calc(100vw - 48px));position:relative;left:50%;transform:translateX(-50%)}
-#mtab td{white-space:normal;text-align:left;vertical-align:top}#mtab th{text-align:left}#mtab td:nth-child(2),#mtab td:nth-child(3){min-width:260px;max-width:460px}#mtab td:last-child{white-space:nowrap}
+#mtab td{white-space:normal;text-align:left;vertical-align:top}#grid td{vertical-align:top}#grid td:nth-child(2){white-space:normal;min-width:220px;text-align:left}#mtab th{text-align:left}#mtab td:nth-child(2),#mtab td:nth-child(3){min-width:260px;max-width:460px}#mtab td:last-child{white-space:nowrap}
 .up{color:var(--red);font-weight:600}.down{color:var(--green);font-weight:600}
 a{color:var(--teal2)}
 .chart{display:flex;align-items:flex-end;gap:2px;height:140px;padding-top:6px;border-bottom:1px solid var(--line)}
@@ -185,7 +186,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <div class="wrap"><table id="reqs"></table></div></div>
   <div class="card" id="secComps"><h2>Our comps <span class="muted small" id="compCount"></span></h2>
     <p class="small muted">Every comp in this set. Avg rate = all-in per night across the next 30 nights we have prices for (Airbnb incl. estimated tax). Blocked = Airbnb calendar, next 30 nights (ESTIMATE).</p>
-    <div class="wrap"><table id="grid"></table></div></div>
+    <div class="wrap wide"><table id="grid"></table></div></div>
 </main>
 <script>
 // Collapsible sections: click a section title to hide/show it. Remembered per browser (if storage is available).
@@ -1029,7 +1030,7 @@ function render() {
       return `<tr${mine ? ' style="background:var(--ours-bg, rgba(14,124,102,.08))"' : ""}><td>${mine ? '<span class="pill">Ours</span>' : (c.tier === "Secondary" ? '<span class="pill" title="Nearby building: reference only, not in the median">Nearby</span> ' : "") + `<button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button>`}</td><td>${addrCell(mine ? { ...c, label: (c.label || "").replace(/\s*\(.*$/, "") } : c)}</td><td>${mine ? "Moose Management" : c.host || '<span class="muted">unknown</span>'}</td>
         <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
         <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
-        <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${escH((c.notes || "").replace(/\s*\((?:owner|Owner)[^)]*\)/g, ""))}</td></tr>${mine && c === oursC[oursC.length - 1] ? `<tr><td colspan="8" class="muted small" style="padding-top:10px">Comps</td></tr>` : ""}`;
+        <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;min-width:320px;max-width:520px;text-align:left">${escH((c.notes || "").replace(/\s*\((?:owner|Owner)[^)]*\)/g, ""))}</td></tr>${mine && c === oursC[oursC.length - 1] ? `<tr><td colspan="8" class="muted small" style="padding-top:10px">Comps</td></tr>` : ""}`;
     }).join("");
   state.checks = state.allChecks || state.checks;
   $("grid").onclick = async e => {
