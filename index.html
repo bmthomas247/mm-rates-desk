@@ -1284,7 +1284,7 @@ async function reviewMatches() {
   out.innerHTML = `<h3 class="chh" style="margin-top:10px">Review matches · ${data.length} waiting</h3>
     <p class="small muted">Open both links. Same home = the same unit listed on both sites. ✓ adds the link (or merges the two comps into one); ✗ keeps them apart. Source: KeyData cross-listing match (KeyData API, pulled 2026-10-13).</p>
     <div class="wrap wide"><table id="mtab"><tr><th>Neighborhood</th><th>Comp we have</th><th>Possible match</th><th>Beds</th><th>Apart</th><th>Match</th><th></th></tr>` +
-    data.map(m => `<tr data-id="${m.id}"><td class="small">${escH(setName(m.set_id))}</td><td><b>${escH(m.comp_label)}</b><br><span class="small">${linksOf(m.comp_links)}</span></td>
+    data.map(m => `<tr data-id="${m.id}"><td class="small">${escH(setName(m.set_id))}${m.n_sets > 1 ? `<br><span class="pill">in ${m.n_sets} neighborhoods</span>` : ""}</td><td><b>${escH(m.comp_label)}</b><br><span class="small">${linksOf(m.comp_links)}</span></td>
       <td>${m.status === "dup" ? `<span class="pill">Already a comp</span> ${escH(m.other_label || "")}<br>` : ""}<span class="small">${lk(m.url, m.channel + ": " + String(m.title_to || m.url).slice(0, 60))}</span></td>
       <td>${m.beds_from ?? "?"} / ${m.beds_to ?? "?"}</td><td>${m.distance_m ?? "?"} m</td><td>${m.confidence == null ? "—" : Math.round(m.confidence * 100) + "%"}</td>
       <td style="white-space:nowrap"><button class="tab" data-ok="1">✓ Same</button> <button class="tab" data-ok="0">✗ Not</button></td></tr>`).join("") + `</table></div>`;
