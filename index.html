@@ -321,7 +321,7 @@ async function setNightly(setId) {
 function adrDay(k) {
   const by = {};
   for (const n of state.nightly || []) {
-    if (n.tier === "Ours") continue;
+    if (n.tier === "Ours" || n.tier === "Secondary") continue;
     const off = Math.round((new Date(k + "T12:00:00") - new Date(n.start_date + "T12:00:00")) / 864e5);
     if (off < 0 || off >= n.avail.length) continue;
     (by[n.comp_id] ||= {})[n.channel] = { open: n.avail[off] === "1", rate: n.rates[off] };
@@ -350,7 +350,9 @@ async function load(setId) {
     setNightly(setId)]);
   state.nightly = nt.data || [];
   // One comp set: every comp that's been added counts the same (no Primary/Secondary split; Brandon 2026-10-09).
-  const one = r => r.tier === "Ours" ? r : { ...r, tier: "Primary" };
+  // Exception (Brandon 2026-10-19): "Secondary" = nearby-building comps (e.g. Moose Lodge / Ski Team / Three Kings / Edelweiss):
+  // listed for reference, never counted in medians or calendars.
+  const one = r => r.tier === "Ours" || r.tier === "Secondary" ? r : { ...r, tier: "Primary" };
   state.comps = (c.data || []).map(one); state.allChecks = state.checks = (k.data || []).map(one); state.cal = (cal.data || []).map(one);
   const oursIds = state.comps.filter(x => x.tier === "Ours").map(x => x.id);
   const bk = oursIds.length ? await allRows(() => sb.from("our_bookings").select("*", { count: "exact" }).in("comp_id", oursIds).order("comp_id").order("reservation_id")) : { data: [] };
@@ -387,7 +389,7 @@ function addrCell(c) {
 function rangeNights() { const R = state.range; if (!R?.co) return null; const a = []; for (let k = R.ci; k < R.co; k = addD(k, 1)) a.push(k); return a; }
 function renderOurs(S) {
   const ours = state.comps.filter(c => c.tier === "Ours").sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
-  const nComps = state.comps.filter(c => c.tier !== "Ours");
+  const nComps = state.comps.filter(c => c.tier === "Primary");
   let h = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h2>Our homes in this set <span class="muted small">(${ours.length} ours · ${nComps.length} comps)</span></h2><span class="sp"></span><button class="tab on" id="reportBtn" title="Suggested nightly rent for every home, week by week, for the next 180 nights">Generate pricing report (180 days)</button></div>`;
   if (!ours.length) { $("ours").innerHTML = h + `<p class="muted">None of our homes are in this set yet.</p>`; return; }
   h += `<div class="wrap"><table><tr><th>Home</th><th>Bedrooms / baths / sleeps</th><th>Listings</th><th>${rangeNights() ? "Blocked on your dates" : "Blocked 30 / 60 / 90 nights"}<br><span class="muted small">ours vs comp median</span></th><th>${new Date().getFullYear()} gross rent<br><span class="muted small">booked nights</span></th><th>Last booking</th></tr>`;
@@ -790,7 +792,7 @@ function renderPicker() {
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
   if (!state.calMonth) { const d = new Date(); state.calMonth = new Date(d.getFullYear(), d.getMonth(), 1, 12); }
   const pn = nightData();
-  const prim = state.comps.filter(c => c.tier !== "Ours").map(c => c.id);
+  const prim = state.comps.filter(c => c.tier === "Primary").map(c => c.id);
   const av = Object.fromEntries(prim.map(id => [id, availOf(id)]));
   const dayInfo = k => {
     // one all-in value per comp per night: average of its channels (Airbnb gets the estimated Summit County tax added)
@@ -1024,7 +1026,7 @@ function render() {
       const a = availOf(c.id), bl = a ? today30.map(a).filter(v => v != null) : [];
       const v = []; for (const [name, days] of Object.entries(pnC[c.id] || {})) for (const k of today30) if (days[k]) v.push(days[k].reduce((x, y) => x + y, 0) / days[k].length * (name === "Airbnb" ? 1 + AIRBNB_TAX : 1));
       const links = (c.comp_links || []).filter(l => l.active).map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.channel}</a>`).join("<br>");
-      return `<tr${mine ? ' style="background:var(--ours-bg, rgba(14,124,102,.08))"' : ""}><td>${mine ? '<span class="pill">Ours</span>' : `<button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button>`}</td><td>${addrCell(mine ? { ...c, label: (c.label || "").replace(/\s*\(.*$/, "") } : c)}</td><td>${mine ? "Moose Management" : c.host || '<span class="muted">unknown</span>'}</td>
+      return `<tr${mine ? ' style="background:var(--ours-bg, rgba(14,124,102,.08))"' : ""}><td>${mine ? '<span class="pill">Ours</span>' : (c.tier === "Secondary" ? '<span class="pill" title="Nearby building: reference only, not in the median">Nearby</span> ' : "") + `<button class="xbtn" data-rm="${c.id}" title="Remove ${c.label} from this comp set" aria-label="Remove ${c.label}">×</button>`}</td><td>${addrCell(mine ? { ...c, label: (c.label || "").replace(/\s*\(.*$/, "") } : c)}</td><td>${mine ? "Moose Management" : c.host || '<span class="muted">unknown</span>'}</td>
         <td>${c.bedrooms ?? "—"} / ${c.baths ?? "—"} / ${c.sleeps ?? "—"}</td><td>${links || "—"}</td>
         <td>${bl.length ? Math.round(bl.filter(x => x === "0").length / bl.length * 100) + "%" : "—"}</td>
         <td>${v.length ? fmt(v.reduce((x, y) => x + y, 0) / v.length) : "—"}</td><td class="muted small" style="white-space:normal;max-width:220px">${escH((c.notes || "").replace(/\s*\((?:owner|Owner)[^)]*\)/g, ""))}</td></tr>${mine && c === oursC[oursC.length - 1] ? `<tr><td colspan="8" class="muted small" style="padding-top:10px">Comps</td></tr>` : ""}`;
@@ -1158,7 +1160,7 @@ function repNights(win) { // win: { name, nights[], peak }
   for (const r of all) { if (!priced(r)) continue; const pn = (r.pre_tax ? r.total * (1 + AIRBNB_TAX) : +r.total) / r.nights;
     for (let i = 0; i < r.nights; i++) { const k = addD(r.check_in, i);
       if (r.tier === "Ours") { const o = ((ours[r.comp_id] ||= {})[k] ||= {}); (o[r.channel] ||= []).push(pn); if (r.channel === "Direct" && r.rent) (o.rent ||= []).push(r.rent / r.nights); }
-      else (((comps[k] ||= {})[r.channel] ||= {})[r.comp_id] ||= []).push(pn); } }
+      else if (r.tier === "Primary") (((comps[k] ||= {})[r.channel] ||= {})[r.comp_id] ||= []).push(pn); } }
   const out = [];
   for (const h of state.comps.filter(c => c.tier === "Ours")) { const hb = homeBookings(h.id), nights = win.nights;
     const off = !win.peak && nights.filter(offOf).length >= Math.min(4, nights.length);
@@ -1183,7 +1185,7 @@ function minChanges(horizon) { // our 4+ night minimums that block more than the
   const all = state.allChecks || state.checks, today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, horizon), out = [];
   const peakName = k => peakOf(k) || holOf(k).find(n => !/^Utah|^Opening day|^Hanukkah/.test(n)) || null;
   const eventNight = k => KEY_EVENTS.some(([a, b]) => k >= a && k <= b);
-  const share = (a, b) => { const v = all.filter(r => r.tier !== "Ours" && r.channel === "Airbnb" && r.nights === 2 && r.check_in >= a && r.check_in <= b && (r.status === "min_stay" || r.status === "available"));
+  const share = (a, b) => { const v = all.filter(r => r.tier === "Primary" && r.channel === "Airbnb" && r.nights === 2 && r.check_in >= a && r.check_in <= b && (r.status === "min_stay" || r.status === "available"));
     return v.length ? v.filter(r => r.status === "min_stay").length / v.length : null; };
   for (const h of state.comps.filter(c => c.tier === "Ours")) {
     const mins = all.filter(r => r.comp_id === h.id && r.status === "min_stay" && r.min_nights >= 4 && r.check_in >= today && r.check_in <= end);
@@ -1421,7 +1423,7 @@ function buildReport() {
       const k = addD(r.check_in, i);
       if (r.tier === "Ours") { const o = ((ours[r.comp_id] ||= {})[k] ||= {}); (o[r.channel] ||= []).push(pn);
         if (r.channel === "Direct" && r.rent) (o.rent ||= []).push(r.rent / r.nights); }
-      else (((comps[k] ||= {})[r.channel] ||= {})[r.comp_id] ||= []).push(pn);
+      else if (r.tier === "Primary") (((comps[k] ||= {})[r.channel] ||= {})[r.comp_id] ||= []).push(pn);
     }
   }
   const weeks = []; for (let w = 0; w < 26; w++) weeks.push({ a: addD(today, w * 7), b: addD(today, w * 7 + 6) });
@@ -1499,7 +1501,7 @@ function openReport() {
   // Bookings: our upcoming guest stays vs the comps' average nightly rate for the same nights (ESTIMATE)
   const label = new Map(state.comps.filter(c => c.tier === "Ours").map(c => [c.id, (c.label || "").replace(/\s*\(.*\)\s*$/, "")]));
   // every comp's own nightly rate that night, booked or open (so already-booked cheaper comps still count)
-  const rateAll = k => { const by = {}; for (const n of state.nightly || []) { if (n.tier === "Ours") continue;
+  const rateAll = k => { const by = {}; for (const n of state.nightly || []) { if (n.tier === "Ours" || n.tier === "Secondary") continue;
       const off = Math.round((new Date(k + "T12:00:00") - new Date(n.start_date + "T12:00:00")) / 864e5);
       if (off >= 0 && off < (n.rates || []).length && n.rates[off] != null) (by[n.comp_id] ||= {})[n.channel] = +n.rates[off]; }
     const v = Object.values(by).map(x => x.Airbnb ?? x.VRBO).filter(x => x != null); return { adr: avg(v), n: v.length }; };
