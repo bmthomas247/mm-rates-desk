@@ -1211,7 +1211,7 @@ async function buildColleenSheet() {
         let nu = r5(r.sug), note = "";
         if (act === "Raise" && chg > 0.5) { nu = r5(r.rent + (r.sug - r.rent) / 2); note = `Step 1. Go to $${r5(r.sug).toLocaleString()} if it books`; }
         if (act === "Lower" && chg < -0.25) { nu = r5(r.rent * 0.75); note = "Step 1 (max 25% cut). Re-check in 2 weeks"; }
-        if (act === "Lower" && w.peak) note = "Holiday: hold until 3 days out, then no lower than a normal ski-season rate";
+        if (act === "Lower" && w.peak) note = "Holiday: small cuts OK as it gets close; in the last 7 days, no lower than a normal ski-season rate";
         rows[j].push({ set: setName, setId: state.set.id, comp: r.h.id, home: (r.h.label || "").replace(/\s*\(.*\)\s*$/, ""), act, cur: r5(r.rent), nu, note, w }); } });
       for (const m of minChanges(180)) mins.push({ set: setName, setId: state.set.id, comp: m.h.id, home: (m.h.label || "").replace(/\s*\(.*\)\s*$/, ""), ...m });
     }
