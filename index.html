@@ -51,6 +51,9 @@ a{color:var(--teal2)}
 #login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
 #pulse{display:none}main.v-pulse #pulse{display:block}main.v-pulse>*:not(#viewnav):not(#pulse),main.v-hotels>*:not(#viewnav):not(#hotCard){display:none!important}#pulse h3{font-size:15px;margin:0 0 6px}#pulse table th{font-weight:600;color:var(--ink2);padding:2px 6px}#pulse table td{padding:2px 6px;border-top:1px solid var(--line)}
+.pickhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px}.pickedlbl{background:var(--teal);color:var(--onteal);font-weight:600;padding:4px 12px;border-radius:999px;font-size:13px}
+.homesel{position:relative}.homesel summary{cursor:pointer;list-style:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--ink2)}.homesel summary::-webkit-details-marker{display:none}
+.homeselbox{position:absolute;z-index:20;top:110%;left:0;min-width:240px;max-height:340px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.15);padding:8px}.homeselbox label{display:flex;gap:8px;align-items:center;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:6px}.homeselbox label:hover{background:var(--tealbg)}.homeselbox .allrow{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:6px;font-weight:600}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
 dialog{max-height:90vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -123,7 +126,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
   <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
   <div class="card" id="pulse"><h2 style="margin:0 0 8px">📈 Market pulse</h2><div id="pulseBody"></div></div>
-  <div class="setnav"><h2 style="margin:0 0 8px">1 · Pick a neighborhood or home</h2><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
+  <div class="setnav"><div class="pickhead"><h2 style="margin:0">1 · Pick a neighborhood or home</h2><span id="pickedLbl" class="pickedlbl hidden"></span><details id="homeSel" class="homesel hidden"><summary id="homeSelSum"></summary><div id="homeSelBox" class="homeselbox"></div></details></div><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">2 · Pick dates</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
     <p class="small muted" id="calHelp">Pick check-in, then check-out. The number under each day is the average all-in rate per night across all our comps that are priced for that night (Airbnb incl. estimated tax, and Direct). Red = 60%+ of comps already blocked. Hover a day for the count.</p>
@@ -364,9 +367,31 @@ async function load(setId) {
   const oursIds = state.comps.filter(x => x.tier === "Ours").map(x => x.id);
   const bk = oursIds.length ? await allRows(() => sb.from("our_bookings").select("*", { count: "exact" }).in("comp_id", oursIds).order("comp_id").order("reservation_id")) : { data: [] };
   state.bookings = bk.data || []; state.bookingsLoaded = !bk.error && state.bookings.length > 0;
-  render(); loadReqs();
+  // Home picker (Brandon 2026-10-20): keep the full set, then show all of our homes or only the ones ticked.
+  state._all = { comps: state.comps, checks: state.allChecks, cal: state.cal, bookings: state.bookings }; state.homeSel = null;
+  renderHomeSel(); render(); loadReqs();
 }
 
+function applyHomeSel() {
+  const A = state._all; if (!A) return; const keep = id => !state.homeSel || state.homeSel.has(id), f = r => r.tier !== "Ours" || keep(r.comp_id);
+  state.comps = A.comps.filter(c => c.tier !== "Ours" || keep(c.id)); state.allChecks = state.checks = A.checks.filter(f); state.cal = A.cal.filter(f);
+  state.bookings = A.bookings.filter(b => keep(b.comp_id));
+}
+function renderHomeSel() {
+  const lbl = $("pickedLbl"), box = $("homeSel"); if (!state.set || !state._all) { lbl.classList.add("hidden"); box.classList.add("hidden"); return; }
+  lbl.textContent = "Selected: " + state.set.name; lbl.classList.remove("hidden");
+  const ours = state._all.comps.filter(c => c.tier === "Ours").map(c => ({ id: c.id, name: (c.label || c.id).replace(/\s*\(.*?\)\s*$/, "") })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!ours.length) { box.classList.add("hidden"); return; } box.classList.remove("hidden");
+  const on = id => !state.homeSel || state.homeSel.has(id), nOn = ours.filter(h => on(h.id)).length;
+  $("homeSelSum").textContent = nOn === ours.length ? `Our homes: all ${ours.length} ▾` : `Our homes: ${nOn} of ${ours.length} ▾`;
+  $("homeSelBox").innerHTML = `<label class="allrow"><input type="checkbox" data-all="1" ${nOn === ours.length ? "checked" : ""}> Show all homes</label><div class="small muted" style="padding:2px 6px 4px">Tick a home to show only it; tick more to add.</div>` + ours.map(h => `<label><input type="checkbox" data-id="${escH(h.id)}" ${on(h.id) ? "checked" : ""}> ${escH(h.name)}</label>`).join("");
+  $("homeSelBox").onchange = e => { const t = e.target;
+    if (t.dataset.all) state.homeSel = null;
+    else if (!state.homeSel) state.homeSel = new Set([t.dataset.id]); // from "all": the first click picks just that home
+    else { const cur = new Set(state.homeSel); t.checked ? cur.add(t.dataset.id) : cur.delete(t.dataset.id); state.homeSel = cur.size === ours.length ? null : cur; }
+    if (state.homeSel && !state.homeSel.size) state.homeSel = null; // never leave the page with no homes
+    applyHomeSel(); renderHomeSel(); $("homeSel").open = true; render(); };
+}
 function stays() {
   const by = {};
   for (const r of state.checks) { const key = r.check_in + "|" + r.check_out + "|" + r.window_code; (by[key] ||= []).push(r); }
@@ -478,9 +503,12 @@ function renderDaily(ch) {
     el.innerHTML = `<p class="muted small" style="padding:18px 0">${ch === "VRBO" ? "VRBO prices aren't pulled automatically yet (VRBO hides prices from automated browsers)." : "No priced nights yet for this channel."}</p>`; return;
   }
   const W = 1000, H = 270, L = 52, R = 12, T = 32, B = 34;
-  const maxV = Math.max(...pts.flatMap(p => [p.ours, p.med, p.p75, p.hot]).filter(v => v != null)) * 1.1;
-  const step = maxV > 1500 ? 500 : maxV > 600 ? 200 : 100, top = Math.ceil(maxV / step) * step;
-  const x = i => L + (W - L - R) * (N === 1 ? 0.5 : i / M), y = v => T + (H - T - B) * (1 - v / top);
+  // Axis fix (Brandon 2026-10-20): one bad comp price ($30K+) stretched the axis into ~70 stacked labels.
+  // Scale to the 98th percentile of values (outliers are drawn at the top edge) and keep about 5 gridlines.
+  const vals = pts.flatMap(p => [p.ours, p.med, p.p75, p.hot]).filter(v => v != null).sort((a, b) => a - b);
+  const maxV = (vals.length >= 20 ? vals[Math.floor(vals.length * 0.98)] : vals[vals.length - 1]) * 1.1;
+  const raw = maxV / 5, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw), top = Math.ceil(maxV / step) * step;
+  const x = i => L + (W - L - R) * (N === 1 ? 0.5 : i / M), y = v => T + (H - T - B) * (1 - Math.min(v, top) / top);
   // Connected: one line through every night that has a value (gaps are bridged)
   const line = key => { const p = pts.map((q, i) => q[key] != null ? [x(i), y(q[key])] : null).filter(Boolean); return p.length ? "M" + p.map(c => c[0].toFixed(1) + "," + c[1].toFixed(1)).join("L") : ""; };
   let g = "";
