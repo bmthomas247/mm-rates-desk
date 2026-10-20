@@ -50,6 +50,7 @@ a{color:var(--teal2)}
 .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
 #login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
+#pulse{display:none}main.v-pulse #pulse{display:block}main.v-pulse>*:not(#viewnav):not(#pulse),main.v-hotels>*:not(#viewnav):not(#hotCard){display:none!important}#pulse h3{font-size:15px;margin:0 0 6px}#pulse table th{font-weight:600;color:var(--ink2);padding:2px 6px}#pulse table td{padding:2px 6px;border-top:1px solid var(--line)}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
 dialog{max-height:90vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -120,6 +121,8 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
     <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
     <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
+  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
+  <div class="card" id="pulse"><h2 style="margin:0 0 8px">📈 Market pulse</h2><div id="pulseBody"></div></div>
   <div class="setnav"><h2 style="margin:0 0 8px">1 · Pick a neighborhood or home</h2><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">2 · Pick dates</h2><span id="rangeLbl" class="small muted"></span><span class="sp"></span><span class="small muted">Under each day:</span><button class="tab" id="calAdr" title="Average nightly rate of the comps open that day, before cleaning and tax">Daily rate (ADR)</button><button class="tab" id="calAllin" title="Average all-in price per night (cleaning, fees and tax spread over the stay)">All-in</button> <button class="tab" id="todayBtn">Today</button> <button class="tab" id="clearRange">Clear dates</button></div>
@@ -242,6 +245,8 @@ async function boot() {
   sets.sort((a, b) => cx(a.name).localeCompare(cx(b.name)) || (([x1, y1], [x2, y2]) => x1 - x2 || y1 - y2)(typeKey(split(a.name)[1]), typeKey(split(b.name)[1])));
   state.sets = sets;
   loadMarket(); $("hotCard").addEventListener("toggle", renderHotels);
+  document.querySelectorAll("#viewnav .tab").forEach(btn => btn.onclick = () => setView(btn.dataset.v));
+  try { const v = localStorage.getItem("mmView"); if (v && v !== "desk") setView(v); } catch (e) {}
   $("colleenBtn").onclick = buildColleenSheet; $("landBtn").onclick = didItLand; $("matchBtn").onclick = reviewMatches;
   const groups = [];
   for (const s of sets) { const [c, t] = split(s.name); const g = groups[groups.length - 1];
@@ -1080,6 +1085,124 @@ state.mk = { events: [], weather: [], loaded: false };
 // ---------- Hotel rates chart (Brandon 2026-10-14): hotel_nights (Google Hotels via SerpApi). Best compare for studios and 1BRs. ----------
 // Hotel prices = lowest nightly rate Google shows for 2 adults, 2-night stay from that night. Shows prices and how many hotels still
 // show rooms (fewer = tighter market). It does NOT show hotels' booked nights.
+// ===== Views: Desk | Market pulse | Hotels (Brandon 2026-10-20) =====
+function setView(v) {
+  const m = $("app"); m.classList.remove("v-pulse", "v-hotels"); if (v !== "desk") m.classList.add("v-" + v);
+  document.querySelectorAll("#viewnav .tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  if (v === "pulse") loadPulse();
+  if (v === "hotels") { $("hotCard").open = true; renderHotels(); }
+  try { localStorage.setItem("mmView", v); } catch (e) {}
+  window.scrollTo(0, 0);
+}
+async function latestRun(source) {
+  const r = await sb.from("market_signals").select("run_id").eq("source", source).order("captured_at", { ascending: false }).limit(1);
+  return r.data?.[0]?.run_id ?? null;
+}
+async function loadPulse() {
+  if (state.pulse) return renderPulse();
+  $("pulseBody").innerHTML = `<p class="small muted">Loading market pulse…</p>`;
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  const [rt, rm, re] = await Promise.all([latestRun("google_trends"), latestRun("google_finance_markets"), latestRun("google_events")]);
+  const ms = (src, run) => run == null ? Promise.resolve({ data: [] }) : allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", src).eq("run_id", run).order("id"));
+  const [tr, mk, fx, nw, ev, fl, pl] = await Promise.all([
+    ms("google_trends", rt), ms("google_finance_markets", rm),
+    allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "google_finance").gte("period_date", addD(today, -60)).order("period_date").order("id")),
+    allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "google_news").gte("period_date", addD(today, -7)).order("period_date", { ascending: false }).order("id")),
+    ms("google_events", re),
+    allRows(() => sb.from("flight_prices").select("*", { count: "exact" }).gte("captured_at", addD(today, -8)).order("captured_at").order("id")),
+    allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "pricelabs").gte("period_date", addD(today, -500)).order("period_date").order("id"))]);
+  state.pulse = { today, trends: tr.data || [], markets: mk.data || [], fx: fx.data || [], news: nw.data || [], events: ev.data || [], flights: fl.data || [], pl: pl.data || [] };
+  renderPulse();
+}
+const upDn = (p, digits = 1) => p == null || isNaN(p) ? `<span class="muted">—</span>` : `<b style="color:var(${p >= 0 ? "--green" : "--red"})">${p >= 0 ? "▲" : "▼"} ${Math.abs(p).toFixed(digits)}%</b>`;
+const srcLine = (txt, url) => `<p class="small muted" style="margin:6px 0 0">Source: ${url ? `<a href="${escH(url)}" target="_blank" rel="noopener">${escH(txt)}</a>` : escH(txt)}</p>`;
+function spark(vals, prev, w = 150, h = 34) {
+  const all = [...vals, ...(prev || [])].filter(v => v != null); if (!all.length) return "";
+  const mx = Math.max(1, ...all), path = a => a.map((v, i) => v == null ? "" : `${i && a[i - 1] != null ? "L" : "M"}${(i * (w - 2) / Math.max(1, a.length - 1) + 1).toFixed(1)},${(h - 2 - (h - 4) * v / mx).toFixed(1)}`).join("");
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:middle">${prev ? `<path d="${path(prev)}" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="3 2"/>` : ""}<path d="${path(vals)}" fill="none" stroke="var(--teal2)" stroke-width="1.8"/></svg>`;
+}
+const PULSE_AREAS = [
+  { name: "Park City town · Old Town · PCMR base", county: "Park City", re: /main street|old town|park city mountain|pcmr|town lift|bonanza|prospector|park city school|park city council|historic park city/i },
+  { name: "Canyons · Kimball · Snyderville", county: "Summit County", re: /canyons|kimball|snyderville|jeremy ranch|pinebrook|summit county|i-80|parleys|silver creek|park west/i },
+  { name: "Deer Valley East · Jordanelle · Heber", county: "Wasatch County", re: /deer valley|jordanelle|heber|kamas|wasatch county|mayflower|east village|midway|us-40|highway 40/i }];
+const NEWS_FLAG = /clos|storm|snow|opening|open(s|ing)? (day|date)|delay|fire|avalanche|crash|road|strike|lift|record|cancel|outage|evacuat|construction|price|sale|sold/i;
+function renderPulse() {
+  const P = state.pulse; if (!P) return;
+  const out = [];
+  // --- Google Trends: last 4 weeks vs the same 4 weeks last year ---
+  const T = {}; for (const r of P.trends) { (T[r.series] ||= []).push(r); }
+  const geos = ["United States", "California", "Texas", "New York", "Australia"], qs = ["Park City", "Deer Valley", "Park City Mountain", "Park City lodging", "Park City ski"];
+  const yoy = rows => {
+    rows = rows.filter(r => r.value != null).sort((a, b) => a.period_date < b.period_date ? -1 : 1); if (rows.length < 60) return null;
+    const last = rows[rows.length - 1].period_date, cur = rows.slice(-4), a = cur.reduce((s, r) => s + +r.value, 0) / cur.length;
+    const lo = addD(last, -364 - 27), hi = addD(last, -364), ly = rows.filter(r => r.period_date >= lo && r.period_date <= hi);
+    if (!ly.length) return null; const b = ly.reduce((s, r) => s + +r.value, 0) / ly.length;
+    const thisYr = rows.slice(-26).map(r => +r.value), lastYr = rows.filter(r => r.period_date > addD(last, -364 - 26 * 7) && r.period_date <= addD(last, -364)).map(r => +r.value);
+    return { pct: b ? (a / b - 1) * 100 : null, a, b, last, thisYr, lastYr };
+  };
+  const tUrl = P.trends[0]?.url, tCap = P.trends[0]?.captured_at;
+  if (P.trends.length) {
+    let h = `<table class="small"><tr><th style="text-align:left">Search</th>${geos.map(g => `<th>${g}</th>`).join("")}</tr>`;
+    for (const q of qs) h += `<tr><td>${escH(q)}</td>${geos.map(g => { const y = yoy(T[`${q} | ${g}`] || []); return `<td style="text-align:center" title="${y ? `Last 4 weeks avg ${y.a.toFixed(0)} vs same weeks last year ${y.b.toFixed(0)}` : "not enough data"}">${upDn(y?.pct, 0)}</td>`; }).join("")}</tr>`;
+    h += `</table><div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px">${geos.map(g => { const y = yoy(T[`Park City | ${g}`] || []); return y ? `<div class="small"><b>${g}</b> "Park City" · last 26 weeks<br>${spark(y.thisYr, y.lastYr)}</div>` : ""; }).join("")}</div>`;
+    h += `<p class="small muted" style="margin:4px 0 0">Solid = this year, dashed = same weeks last year. Google scores each region 0–100 on its own, so compare a region with itself, not with other regions. Searches rise weeks before bookings do.</p>`;
+    out.push(`<h3>🔎 Google searches vs last year <span class="small muted">· last 4 weeks · captured ${tCap ? new Date(tCap).toLocaleDateString() : "—"}</span></h3>${h}${srcLine("Google Trends via SerpApi (5-year weekly)", tUrl)}`);
+  } else out.push(`<h3>🔎 Google searches vs last year</h3><p class="small muted">No Trends data yet (signals.py, Mondays).</p>`);
+  // --- Stock markets ---
+  if (P.markets.length) {
+    const grp = { us: "US stocks", futures: "Futures", europe: "Europe", asia: "Asia", currencies: "Currencies", crypto: "Crypto" }, show = { us: 1, futures: 1, europe: 1, asia: 1, currencies: 1 };
+    const us = P.markets.filter(m => m.label === "us" && m.series !== "VIX"), upN = us.filter(m => +m.extra?.change_pct > 0).length;
+    let h = `<p class="small" style="margin:0 0 6px">${us.length ? `<b>${upN} of ${us.length}</b> US indexes up today. ` : ""}Brandon's rule: markets up → people feel richer → more trips booked.</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 18px">`;
+    for (const k of Object.keys(grp)) { if (!show[k]) continue; const rows = P.markets.filter(m => m.label === k); if (!rows.length) continue;
+      h += `<div><div class="small muted" style="margin-top:4px">${grp[k]}</div>${rows.map(m => `<div class="small" style="display:flex;justify-content:space-between;gap:8px"><span>${escH(m.series)}</span><span>${(+m.value).toLocaleString(undefined, { maximumFractionDigits: k === "currencies" ? 4 : 0 })} ${upDn(+m.extra?.change_pct, 2)}</span></div>`).join("")}</div>`; }
+    h += `</div>`;
+    out.push(`<h3>📊 Stock markets <span class="small muted">· ${escH(P.markets[0].period_date || "")}</span></h3>${h}${srcLine("Google Finance markets via SerpApi", P.markets[0].url)}`);
+  }
+  // --- Currencies (Australia first) ---
+  if (P.fx.length) {
+    const by = {}; for (const r of P.fx) if (+r.value > 0) (by[r.series] ||= []).push(r);
+    const nm = { "AUD-USD": "🇦🇺 Australian dollar", "CAD-USD": "🇨🇦 Canadian dollar", "GBP-USD": "🇬🇧 British pound", "MXN-USD": "🇲🇽 Mexican peso" };
+    let h = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 18px">`;
+    for (const s of Object.keys(nm)) { const rows = by[s]; if (!rows?.length) continue; const l = rows[rows.length - 1], f = rows[0], p = (l.value / f.value - 1) * 100;
+      h += `<div class="small"><b>${nm[s]}</b><br>1 = $${(+l.value).toFixed(s === "MXN-USD" ? 4 : 3)} USD · today ${upDn(l.extra?.movement?.percentage * (l.extra?.movement?.movement === "Down" ? -1 : 1), 2)}<br><span class="muted">since ${f.period_date}:</span> ${upDn(p, 1)} ${rows.length > 1 ? spark(rows.map(r => +r.value), null, 110, 24) : ""}${s === "AUD-USD" ? `<br><span class="muted">A$1,000 = $${Math.round(1000 * l.value).toLocaleString()} USD. Stronger dollar = cheaper Park City trip for Aussies.</span>` : ""}</div>`; }
+    out.push(`<h3>💱 Currencies</h3>${h}</div>${srcLine("Google Finance via SerpApi", (by["AUD-USD"] || [])[0]?.url)}`);
+  }
+  // --- Flights into SLC ---
+  if (P.flights.length) {
+    const last = {}; for (const f of P.flights) last[`${f.market}|${f.outbound_date}`] = f;
+    const mkts = [...new Set(P.flights.map(f => f.market))], dates = [...new Set(P.flights.map(f => f.outbound_date))].sort();
+    const col = l => l === "low" ? "--green" : l === "high" ? "--red" : "--ink2";
+    let h = `<div class="wrap"><table class="small"><tr><th style="text-align:left">From</th>${dates.map(d => `<th>${new Date(d + "T12:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</th>`).join("")}</tr>`;
+    for (const m of mkts) h += `<tr><td>${escH(m)}</td>${dates.map(d => { const f = last[`${m}|${d}`]; return `<td style="text-align:center">${f && f.lowest_price != null ? `<a href="${escH(f.search_url)}" target="_blank" rel="noopener" style="color:var(${col(f.price_level)})" title="${escH(f.price_level || "")} · ${escH(f.cheapest_airline || "")}">$${Math.round(f.lowest_price)}</a>` : "—"}</td>`; }).join("")}</tr>`;
+    h += `</table></div><p class="small muted" style="margin:4px 0 0">Cheapest round trip into SLC, 1 adult. Green = Google says low, red = high. Cheap flights to a date = more demand coming.</p>`;
+    out.push(`<h3>✈️ Flights into SLC</h3>${h}${srcLine("Google Flights via SerpApi (click a price for the search)", null)}`);
+  } else out.push(`<h3>✈️ Flights into SLC</h3><p class="small muted">First flight prices come in Monday (flights.py).</p>`);
+  // --- PriceLabs (weekly) ---
+  if (P.pl.length) {
+    const occ = P.pl.filter(r => /\| occ$/.test(r.series)), adr = P.pl.filter(r => /\| adr$/.test(r.series));
+    const lm = {}; for (const r of [...occ, ...adr]) lm[r.series + r.period_date] = r;
+    const months = [...new Set(occ.map(r => r.period_date))].sort().slice(-13);
+    let h = `<div class="wrap"><table class="small"><tr><th style="text-align:left">Utah</th>${months.map(m => `<th>${m.slice(0, 7)}</th>`).join("")}</tr>`;
+    h += `<tr><td>Occupancy</td>${months.map(m => { const r = occ.find(x => x.period_date === m); return `<td style="text-align:center">${r ? Math.round(r.value * 100) + "%" : "—"}</td>`; }).join("")}</tr>`;
+    h += `<tr><td>ADR</td>${months.map(m => { const r = adr.find(x => x.period_date === m); return `<td style="text-align:center">${r ? fmt(r.value) : "—"}</td>`; }).join("")}</tr></table></div>`;
+    out.push(`<h3>🏘️ Short-term rental market (PriceLabs)</h3>${h}${srcLine("PriceLabs STR index (weekly Sunday pull)", "https://app.pricelabs.co")}`);
+  }
+  // --- News by area, next to our neighborhoods ---
+  const seen = new Set(), news = P.news.filter(n => { const k = (n.label || "").toLowerCase().slice(0, 80); if (seen.has(k)) return false; seen.add(k); return true; });
+  const ours = c => [...new Set((state.sets || []).filter(s => countyOf(s.name, s) === c).map(s => codeOf(s.name) || s.name.split(/\s+\d/)[0]))].join(", ");
+  const tagged = PULSE_AREAS.map(a => ({ ...a, items: [] })), general = [];
+  for (const n of news) { const t = (n.label || "") + " " + (n.series || ""); const hits = tagged.filter(a => a.re.test(n.label || "")); (hits.length ? hits : [/deer valley/i.test(n.series) ? tagged[2] : /park city mountain/i.test(n.series) ? tagged[0] : null].filter(Boolean)).forEach(a => a.items.push(n)); if (!hits.length && !/deer valley|park city mountain/i.test(n.series)) general.push(n); }
+  const li = n => `<li>${NEWS_FLAG.test(n.label || "") ? "🚩 " : ""}<a href="${escH(n.url)}" target="_blank" rel="noopener">${escH(n.label)}</a> <span class="muted">· ${escH(n.extra?.source || "")} · ${escH(n.period_date || "")}</span></li>`;
+  let nh = tagged.map(a => `<div style="margin-top:8px"><b>${escH(a.name)}</b> <span class="small muted">· our homes: ${escH(ours(a.county) || "—")}</span>${a.items.length ? `<ul class="small" style="margin:4px 0 0;padding-left:18px">${a.items.slice(0, 8).map(li).join("")}</ul>` : `<div class="small muted">No news this week.</div>`}</div>`).join("");
+  if (general.length) nh += `<div style="margin-top:8px"><b>Park City in general</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${general.slice(0, 10).map(li).join("")}</ul></div>`;
+  out.push(`<h3>📰 News, last 7 days</h3><p class="small muted" style="margin:0">🚩 = words like closure, storm, snow, opening, road, lift, sale. Areas are matched by place names in the headline.</p>${news.length ? nh : `<p class="small muted">No news saved this week yet (signals.py runs daily).</p>`}${srcLine("Google News via SerpApi (each headline links to its article)", null)}`);
+  // --- Events ---
+  if (P.events.length) {
+    const sn = new Set(), ev = P.events.filter(e => { const k = (e.label || "").toLowerCase() + (e.extra?.when || ""); if (sn.has(k)) return false; sn.add(k); return true; });
+    out.push(`<h3>🎟️ Upcoming events</h3><ul class="small" style="margin:0;padding-left:18px">${ev.slice(0, 25).map(e => `<li><b>${escH(e.extra?.when || e.extra?.start || "")}</b> · <a href="${escH(e.url)}" target="_blank" rel="noopener">${escH(e.label)}</a> <span class="muted">· ${escH(e.extra?.venue || "")} · ${/heber/i.test(e.series) ? "Heber" : "Park City"}</span></li>`).join("")}</ul>${srcLine("Google Events via SerpApi", null)}`);
+  }
+  $("pulseBody").innerHTML = out.map(s => `<section style="margin-bottom:18px">${s}</section>`).join("");
+}
 function renderHotels() {
   const H = state.mk?.hotels || [], today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
   const pc = H.filter(h => h.area === "Park City"), hb = H.filter(h => h.area !== "Park City"), cap = H.map(h => h.captured_at).sort().pop();
