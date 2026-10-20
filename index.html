@@ -50,7 +50,14 @@ a{color:var(--teal2)}
 .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
 #login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
-#pulse{display:none}main.v-pulse #pulse{display:block}main.v-pulse>*:not(#viewnav):not(#pulse),main.v-hotels>*:not(#viewnav):not(#hotCard){display:none!important}#pulse h3{font-size:15px;margin:0 0 6px}#pulse table th{font-weight:600;color:var(--ink2);padding:2px 6px}#pulse table td{padding:2px 6px;border-top:1px solid var(--line)}
+#pulse{display:none}#rater{display:none}main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){display:none!important}
+.rtabs,.rrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.rrow select{width:auto;max-width:100%}
+.rphotos{display:flex;gap:6px;overflow-x:auto;padding:4px 0}.rphotos img{height:110px;border-radius:8px;display:block}.rphotos.big img{height:170px}
+.raibox{background:var(--tealbg);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:13px}
+.rq{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line)}
+.rchips{display:flex;gap:5px}.rchip{min-width:38px;padding:7px 0;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:700;font-size:14px;cursor:pointer}.rchip.skip{min-width:70px;font-weight:500;font-size:12px;color:var(--ink2)}.rchip.on{background:var(--teal);border-color:var(--teal);color:var(--onteal)}
+.rduel{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}.rpick{display:grid;gap:4px;text-align:left;border:2px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:10px;cursor:pointer;font:inherit}.rpick:hover{border-color:var(--teal)}.rpick b{font-size:16px}.rpick img{width:100%;height:150px;object-fit:cover;border-radius:8px}
+@media (max-width:600px){.rduel{grid-template-columns:1fr}}main.v-pulse #pulse{display:block}main.v-pulse>*:not(#viewnav):not(#pulse),main.v-hotels>*:not(#viewnav):not(#hotCard){display:none!important}#pulse h3{font-size:15px;margin:0 0 6px}#pulse table th{font-weight:600;color:var(--ink2);padding:2px 6px}#pulse table td{padding:2px 6px;border-top:1px solid var(--line)}
 .pickhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px}.pickedlbl{background:var(--teal);color:var(--onteal);font-weight:600;padding:4px 12px;border-radius:999px;font-size:13px}
 .homesel{position:relative}.homesel summary{cursor:pointer;list-style:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--ink2)}.homesel summary::-webkit-details-marker{display:none}
 .homeselbox{position:absolute;z-index:20;top:110%;left:0;min-width:240px;max-height:340px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.15);padding:8px}.homeselbox label{display:flex;gap:8px;align-items:center;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:6px}.homeselbox label:hover{background:var(--tealbg)}.homeselbox input{width:auto!important;min-width:0;margin:0;flex:none}.homeselbox label{white-space:nowrap}.homeselbox .allrow{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:6px;font-weight:600}
@@ -124,7 +131,8 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
     <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
     <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
-  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
+  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><button class="tab" data-v="rater">⭐ Home Rater</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
+  <div class="card" id="rater"><h2 style="margin:0 0 8px">⭐ Home Rater</h2><p class="small muted" style="margin:0 0 8px">Score our homes 1–5 and pick which of two homes is nicer. Everyone's scores are combined in Rankings, next to Claude's AI score from the listing photos (ESTIMATE). The pricing engine will use these to price nicer homes higher within the same area.</p><div id="raterBody"></div></div>
   <div class="card" id="pulse"><h2 style="margin:0 0 8px">📈 Market pulse</h2><div id="pulseBody"></div></div>
   <div class="setnav"><div class="pickhead"><h2 style="margin:0">1 · Pick a neighborhood or home</h2><span id="pickedLbl" class="pickedlbl hidden"></span><details id="homeSel" class="homesel hidden"><summary id="homeSelSum"></summary><div id="homeSelBox" class="homeselbox"></div></details></div><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
   <div class="card" id="search">
@@ -234,7 +242,7 @@ let state = { sets: [], set: null, comps: [], checks: [], cal: [] };
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { $("login").classList.remove("hidden"); return; }
-  $("out").classList.remove("hidden"); $("app").classList.remove("hidden");
+  $("out").classList.remove("hidden"); $("app").classList.remove("hidden"); state.email = session.user.email;
   const [{ data: sets, error }, { data: runs }] = await Promise.all([
     sb.from("rate_sets").select("*").eq("active", true).order("name"),
     sb.from("runs").select("*").order("started_at", { ascending: false }).limit(1)]);
@@ -384,13 +392,13 @@ function renderHomeSel() {
   if (!ours.length) { box.classList.add("hidden"); return; } box.classList.remove("hidden");
   const on = id => !state.homeSel || state.homeSel.has(id), nOn = ours.filter(h => on(h.id)).length;
   $("homeSelSum").textContent = nOn === ours.length ? `Our homes: all ${ours.length} ▾` : `Our homes: ${nOn} of ${ours.length} ▾`;
-  $("homeSelBox").innerHTML = `<label class="allrow"><input type="checkbox" data-all="1" ${nOn === ours.length ? "checked" : ""}> Show all homes</label><div class="small muted" style="padding:2px 6px 4px">Tick a home to show only it; tick more to add.</div>` + ours.map(h => `<label><input type="checkbox" data-id="${escH(h.id)}" ${on(h.id) ? "checked" : ""}> ${escH(h.name)}</label>`).join("");
+  $("homeSelBox").innerHTML = `<div class="allrow" style="display:flex;gap:6px;padding:2px 4px 6px"><button class="tab" data-sel="all" style="padding:3px 10px;font-size:12px">Select all</button><button class="tab" data-sel="none" style="padding:3px 10px;font-size:12px">Deselect all</button></div><div class="small muted" style="padding:2px 6px 4px">Tick a home to show only it; tick more to add.</div>` + ours.map(h => `<label><input type="checkbox" data-id="${escH(h.id)}" ${on(h.id) ? "checked" : ""}> ${escH(h.name)}</label>`).join("");
   $("homeSelBox").onchange = e => { const t = e.target;
-    if (t.dataset.all) state.homeSel = null;
-    else if (!state.homeSel) state.homeSel = new Set([t.dataset.id]); // from "all": the first click picks just that home
+    if (!state.homeSel) state.homeSel = new Set([t.dataset.id]); // from "all": the first click picks just that home
     else { const cur = new Set(state.homeSel); t.checked ? cur.add(t.dataset.id) : cur.delete(t.dataset.id); state.homeSel = cur.size === ours.length ? null : cur; }
-    if (state.homeSel && !state.homeSel.size) state.homeSel = null; // never leave the page with no homes
     applyHomeSel(); renderHomeSel(); $("homeSel").open = true; render(); };
+  $("homeSelBox").onclick = e => { const b = e.target.closest("[data-sel]"); if (!b) return; e.preventDefault();
+    state.homeSel = b.dataset.sel === "all" ? null : new Set(); applyHomeSel(); renderHomeSel(); $("homeSel").open = true; render(); };
 }
 function stays() {
   const by = {};
@@ -1119,6 +1127,7 @@ function setView(v) {
   const m = $("app"); m.classList.remove("v-pulse", "v-hotels"); if (v !== "desk") m.classList.add("v-" + v);
   document.querySelectorAll("#viewnav .tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   if (v === "pulse") loadPulse();
+  if (v === "rater") loadRater();
   if (v === "hotels") { $("hotCard").open = true; renderHotels(); } else if ($("hotCard").open) renderHotels();
   try { localStorage.setItem("mmView", v); } catch (e) {}
   window.scrollTo(0, 0);
@@ -1232,6 +1241,118 @@ function renderPulse() {
   }
   $("pulseBody").innerHTML = out.map(s => `<section style="margin-bottom:18px">${s}</section>`).join("");
 }
+// ===== Home Rater (Brandon 2026-10-20): staff score our homes 1-5 + head-to-head; Claude's AI score shown beside (ESTIMATE). =====
+const RCATS = [["inside", "Inside condition", "Walls, floors, kitchen, baths"], ["clean", "Clean & well kept", "Wear and tear, things that break"], ["furniture", "Furniture & decor", "Beds, couches, finishes"], ["amenities", "Amenities", "Hot tub, garage, game room, views"], ["location", "Location", "Lifts, Main Street, shuttle, drive"], ["overall", "Overall", "Your gut score"]];
+const RT = { homes: null, ai: {}, ratings: [], duels: [], hood: null, idx: 0, sub: "rate", pair: null, pending: null };
+const photoUrl = (p, aid) => p.startsWith("http") ? p : `https://a0.muscache.com/im/pictures/${p[0] === "p" ? "prohost-api" : "hosting"}/Hosting-${aid}/original/${p.slice(2)}.jpeg?im_w=720`;
+async function loadRater(force) {
+  if (RT.homes && !force) return renderRater();
+  $("raterBody").innerHTML = `<p class="small muted">Loading homes…</p>`;
+  const [c, ai, rt, du] = await Promise.all([
+    allRows(() => sb.from("comps").select("id,set_id,label,bedrooms,sleeps", { count: "exact" }).eq("tier", "Ours").eq("active", true).order("id")),
+    allRows(() => sb.from("home_ai").select("*", { count: "exact" }).order("comp_id")),
+    allRows(() => sb.from("home_ratings").select("*", { count: "exact" }).order("id")),
+    allRows(() => sb.from("home_duels").select("*", { count: "exact" }).order("id"))]);
+  const setName = id => state.sets.find(s => s.id === id)?.name || id;
+  RT.homes = (c.data || []).map(h => ({ ...h, name: (h.label || h.id).replace(/\s*\(.*?\)\s*$/, ""), set: setName(h.set_id) })).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  RT.ai = Object.fromEntries((ai.data || []).map(a => [a.comp_id, a])); RT.ratings = rt.data || []; RT.duels = du.data || [];
+  RT.err = c.error?.message || ai.error?.message || rt.error?.message || du.error?.message;
+  if (!RT.hood) RT.hood = RT.homes[0]?.set_id;
+  renderRater();
+}
+function rSub(s) { RT.sub = s; renderRater(); }
+function staffAgg() { // latest score per rater per home, then the average across raters
+  const last = {}; for (const r of RT.ratings) last[r.comp_id + "|" + r.rater] = r;
+  const by = {}; for (const r of Object.values(last)) { const b = (by[r.comp_id] ||= { n: 0, s: {} }); b.n++; for (const [k] of RCATS) if (r[k] >= 1) { (b.s[k] ||= []).push(r[k]); } }
+  for (const b of Object.values(by)) b.avg = Object.fromEntries(Object.entries(b.s).map(([k, v]) => [k, v.reduce((x, y) => x + y, 0) / v.length]));
+  return by;
+}
+function eloAgg() { const E = {}, G = {}; for (const d of RT.duels) { const a = E[d.a] ?? 1500, b = E[d.b] ?? 1500, ea = 1 / (1 + 10 ** ((b - a) / 400)), sa = +d.winner;
+  E[d.a] = a + 24 * (sa - ea); E[d.b] = b + 24 * ((1 - sa) - (1 - ea)); G[d.a] = (G[d.a] || 0) + 1; G[d.b] = (G[d.b] || 0) + 1; } return { E, G }; }
+function photosHtml(h, big) { const a = RT.ai[h.id]; if (!a?.photos?.length) return `<div class="small muted">No listing photos saved for this home yet.</div>`;
+  return `<div class="rphotos${big ? " big" : ""}">${a.photos.map(p => `<a href="${escH(a.listing_url)}" target="_blank" rel="noopener"><img loading="lazy" src="${escH(photoUrl(p, a.airbnb_id))}" alt="${escH(h.name)} listing photo"></a>`).join("")}</div>`; }
+function aiHtml(h) { const a = RT.ai[h.id]; if (!a) return `<div class="small muted">No AI score yet (no Airbnb listing on file).</div>`;
+  const f = v => v == null ? "—" : (+v).toFixed(1);
+  return `<div class="raibox"><b>🤖 Claude's AI score (ESTIMATE)</b> · Overall <b>${f(a.overall)}</b> · Inside ${f(a.inside)} · Amenities ${f(a.amenities)} · Location ${f(a.location)}${a.rating ? ` · Guests ★${(+a.rating).toFixed(2)} (${a.reviews} reviews)` : " · no guest reviews yet"}
+    <div class="small muted">Inside from the listing photos; amenities from the Airbnb listing (${escH((a.amen_list || []).join(", ") || "none found")}); ${escH(a.note || "")}. <a href="${escH(a.listing_url)}" target="_blank" rel="noopener">Airbnb listing</a> · captured ${escH(a.captured_at || "")}.</div></div>`; }
+function renderRater() {
+  const T = RT.homes || [], sets = [...new Map(T.map(h => [h.set_id, h.set])).entries()];
+  const tabs = `<div class="rtabs">${[["rate", "Rate a home"], ["duel", "Which is nicer?"], ["rank", "Rankings"]].map(([k, l]) => `<button class="tab${RT.sub === k ? " on" : ""}" onclick="rSub('${k}')">${l}</button>`).join("")}<span class="small muted">${RT.ratings.length} scores · ${RT.duels.length} matchups so far</span></div>`;
+  let body = "";
+  if (RT.err) body += `<p class="up small">${escH(RT.err)}</p>`;
+  if (RT.sub === "rate") {
+    const list = T.filter(h => h.set_id === RT.hood); if (RT.idx >= list.length) RT.idx = 0; const h = list[RT.idx];
+    const mine = h ? [...RT.ratings].reverse().find(r => r.comp_id === h.id && r.rater === state.email) : null;
+    body += `<div class="rrow"><select id="rHood">${sets.map(([id, n]) => `<option value="${escH(id)}"${id === RT.hood ? " selected" : ""}>${escH(n)}</option>`).join("")}</select>
+      <select id="rHome">${list.map((x, i) => `<option value="${i}"${i === RT.idx ? " selected" : ""}>${escH(x.name)}${RT.ratings.some(r => r.comp_id === x.id && r.rater === state.email) ? " ✓" : ""}</option>`).join("")}</select>
+      <select id="rRole"><option value="">Your job</option>${["Housekeeping", "Inspections", "Maintenance", "Guest services", "Owner relations", "Management", "Other"].map(r => `<option${r === (RT.role || "") ? " selected" : ""}>${r}</option>`).join("")}</select></div>`;
+    if (h) {
+      body += `<h3 style="margin:10px 0 4px">${escH(h.name)} <span class="small muted">${escH(h.set)}${h.sleeps ? " · sleeps " + h.sleeps : ""}</span></h3>${photosHtml(h, true)}${aiHtml(h)}
+        <div id="rForm">${RCATS.map(([k, t, hint]) => `<div class="rq"><div><b>${t}</b> <span class="small muted">${hint}</span></div><div class="rchips" data-k="${k}">${[1, 2, 3, 4, 5].map(n => `<button class="rchip${mine?.[k] === n ? " on" : ""}" data-v="${n}">${n}</button>`).join("")}<button class="rchip skip" data-v="0">Not sure</button></div></div>`).join("")}</div>
+        <div class="rrow"><button class="tab on" id="rSave">Save score</button><button class="tab" id="rNext">Skip / next home</button><span id="rMsg" class="small muted">${mine ? "You scored this home on " + new Date(mine.created_at).toLocaleDateString() + ". Saving again updates your score." : "1 = rough · 3 = average Park City rental · 5 = best we manage"}</span></div><div id="rAfter"></div>`;
+    }
+  } else if (RT.sub === "duel") {
+    if (!RT.pair) RT.pair = pickPair();
+    body += `<p class="small muted">Only answer if you know both homes. These answers rank every home against every other home, across neighborhoods.</p><label class="small"><input type="checkbox" id="rSame" ${RT.sameBr ? "checked" : ""}> Same bedroom count only</label>`;
+    body += RT.pair ? duelHtml(RT.pair, "duel") : `<p class="small muted">No pair found.</p>`;
+  } else body += rankHtml();
+  $("raterBody").innerHTML = tabs + body; wireRater();
+}
+function pickPair(base) {
+  const T = RT.homes || []; if (T.length < 2) return null; const a = base || T[Math.floor(Math.random() * T.length)];
+  let c = T.filter(b => b.id !== a.id && (!RT.sameBr || (b.bedrooms || 0) === (a.bedrooms || 0)));
+  const near = c.filter(b => Math.abs((b.bedrooms || 0) - (a.bedrooms || 0)) <= 1); if (near.length) c = near;
+  return c.length ? [a, c[Math.floor(Math.random() * c.length)]] : null;
+}
+function duelHtml([a, b], ctx) { const card = (h, s) => `<button class="rpick" data-side="${s}" data-ctx="${ctx}"><span class="small muted">${escH(h.set)}</span><b>${escH(h.name)}</b>${(RT.ai[h.id]?.photos || []).slice(0, 1).map(p => `<img loading="lazy" src="${escH(photoUrl(p, RT.ai[h.id].airbnb_id))}" alt="">`).join("")}<span class="small muted">Tap if this one is nicer</span></button>`;
+  return `<div class="rduel">${card(a, 1)}${card(b, 0)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">About the same</button><button class="tab" data-skip="${ctx}">Don't know</button></div>`; }
+function rankHtml() {
+  const S = staffAgg(), { E, G } = eloAgg(), f = v => v == null ? "—" : (+v).toFixed(1);
+  const rows = (RT.homes || []).map(h => { const s = S[h.id], a = RT.ai[h.id]; const staff = s?.avg.overall ?? null;
+    return { h, staff, n: s?.n || 0, ai: a?.overall ?? null, ins: s?.avg.inside ?? null, aiIns: a?.inside ?? null, guest: a?.rating ? +a.rating : null, rev: a?.reviews || 0, elo: G[h.id] ? E[h.id] : null, games: G[h.id] || 0,
+      blend: staff != null ? (s.n >= 2 ? staff : (staff + (a?.overall ?? staff)) / 2) : a?.overall ?? null }; });
+  const k = RT.sortK || "blend"; rows.sort((x, y) => (y[k] ?? -1) - (x[k] ?? -1));
+  const th = (key, t) => `<th data-sk="${key}" style="cursor:pointer">${t}${k === key ? " ▼" : ""}</th>`;
+  return `<p class="small muted">Score = staff overall when 2+ people scored the home; with 1 person it's half staff, half AI; with none it's the AI score (ESTIMATE). Head-to-head starts at 1500. Click a column to sort.</p>
+    <div class="wrap"><table><tr><th>#</th><th>Home</th>${th("blend", "Score")}${th("staff", "Staff overall")}${th("ai", "AI overall")}${th("ins", "Staff inside")}${th("aiIns", "AI inside")}${th("guest", "Guest ★")}${th("elo", "Head-to-head")}</tr>
+    ${rows.map((r, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(r.h.name)}<div class="small muted">${escH(r.h.set)}</div></td><td><b>${f(r.blend)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="small muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${f(r.ins)}</td><td>${f(r.aiIns)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="small muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo) + ` <span class="small muted">(${r.games})</span>`}</td></tr>`).join("")}</table></div>
+    <p class="small muted">Sources: staff scores and matchups saved on the Desk; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
+}
+async function saveDuel(a, b, w) { const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w }); return error; }
+function wireRater() {
+  const B = $("raterBody");
+  B.querySelector("#rHood") && (B.querySelector("#rHood").onchange = e => { RT.hood = e.target.value; RT.idx = 0; renderRater(); });
+  B.querySelector("#rHome") && (B.querySelector("#rHome").onchange = e => { RT.idx = +e.target.value; renderRater(); });
+  B.querySelector("#rRole") && (B.querySelector("#rRole").onchange = e => { RT.role = e.target.value; });
+  B.querySelectorAll(".rchips").forEach(row => row.onclick = e => { const c = e.target.closest(".rchip"); if (!c) return; const was = c.classList.contains("on"); row.querySelectorAll(".rchip").forEach(x => x.classList.remove("on")); if (!was) c.classList.add("on"); });
+  const list = (RT.homes || []).filter(h => h.set_id === RT.hood), h = list[RT.idx];
+  if (B.querySelector("#rNext")) B.querySelector("#rNext").onclick = () => { if (RT.idx < list.length - 1) RT.idx++; else { const ids = [...new Set(RT.homes.map(x => x.set_id))]; RT.hood = ids[(ids.indexOf(RT.hood) + 1) % ids.length]; RT.idx = 0; } renderRater(); window.scrollTo(0, 0); };
+  if (B.querySelector("#rSave")) B.querySelector("#rSave").onclick = async () => {
+    const row = { comp_id: h.id, role: RT.role || null }; let any = false;
+    B.querySelectorAll(".rchips").forEach(r => { const on = r.querySelector(".rchip.on"); const v = on ? +on.dataset.v : 0; row[r.dataset.k] = v >= 1 ? v : null; if (v >= 1) any = true; });
+    if (!any) { $("rMsg").textContent = "Pick at least one score, or use Skip."; return; }
+    const { error } = await sb.from("home_ratings").insert(row);
+    if (error) { $("rMsg").innerHTML = `<span class="up">Couldn't save: ${escH(error.message)}</span>`; return; }
+    RT.ratings.push({ ...row, rater: state.email, created_at: new Date().toISOString() });
+    const p = pickPair(h); RT.pending = p;
+    $("rMsg").textContent = "Saved ✓";
+    $("rAfter").innerHTML = p ? `<h3 style="margin:12px 0 4px">Quick one: is ${escH(h.name)} nicer than ${escH(p[1].name)}?</h3>${duelHtml(p, "after")}` : "";
+    wireDuels();
+  };
+  if (B.querySelector("#rSame")) B.querySelector("#rSame").onchange = e => { RT.sameBr = e.target.checked; RT.pair = null; renderRater(); };
+  B.querySelectorAll("th[data-sk]").forEach(t => t.onclick = () => { RT.sortK = t.dataset.sk; renderRater(); });
+  wireDuels();
+}
+function wireDuels() {
+  const B = $("raterBody");
+  const done = async (ctx, w) => { const p = ctx === "after" ? RT.pending : RT.pair; if (!p) return;
+    if (w != null) { const err = await saveDuel(p[0], p[1], w); if (err) { alertMsg(err.message); return; } }
+    if (ctx === "after") { $("rAfter").innerHTML = `<p class="small muted">Thanks. Saved.</p>`; B.querySelector("#rNext")?.click(); } else { RT.pair = pickPair(); renderRater(); } };
+  B.querySelectorAll(".rpick").forEach(b => b.onclick = () => done(b.dataset.ctx, +b.dataset.side));
+  B.querySelectorAll("[data-tie]").forEach(b => b.onclick = () => done(b.dataset.tie, 0.5));
+  B.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => done(b.dataset.skip, null));
+}
+function alertMsg(m) { const el = $("rMsg"); if (el) el.innerHTML = `<span class="up">${escH(m)}</span>`; }
 function renderHotels() {
   const H = state.mk?.hotels || [], today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
   const pc = H.filter(h => h.area === "Park City"), hb = H.filter(h => h.area !== "Park City"), cap = H.map(h => h.captured_at).sort().pop();
