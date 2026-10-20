@@ -1253,7 +1253,7 @@ function renderReports() {
   const sets = (state.sets || []).filter(s => s.active !== false);
   $("reportsBody").innerHTML = `
   <section class="rpsec"><h3>🟡 Booked too low · 🟢 Great bookings <span class="small muted">all our homes, upcoming guest stays (next 180 days)</span></h3>
-    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Normal nights compare to the comp average; holiday/event nights compare to the comps' top quarter (holiday rule: be the highest). Too low = 15%+ under; great = 10%+ over. ESTIMATE.</p>
+    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×1.58, Airbnb/VRBO ×1.375: our +15% plan and the fees folded into the nightly price). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 3+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
     <div class="rrow"><button class="tab on" id="rpRunBk">Run for all neighborhoods</button><span id="rpBkMsg" class="small muted">${RP.bk ? "Last run " + RP.bk.at.toLocaleTimeString() : "Takes about a minute."}</span></div><div id="rpBkOut">${RP.bk ? bkHtml() : ""}</div></section>
   <section class="rpsec"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
     <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a clean page you can print or save as PDF. No other owners' names; comps shown only as averages.</span></div></section>
@@ -1275,10 +1275,14 @@ function bookingQualityForSet() { // uses the loaded set (state.*)
   for (const b of state.bookings || []) {
     if (b.kind !== "guest" || b.status === "Cancelled" || !label.has(b.comp_id) || !b.nights || !b.gross_rent || b.departure <= today || b.arrival > end) continue;
     const ks = []; for (let k = b.arrival < today ? today : b.arrival; k < b.departure; k = addD(k, 1)) ks.push(k);
-    const per = ks.map(k => { const v = nightRates(k); if (v.length < 2) return null; const peak = !!peakOf(k); return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
+    if (b.nights >= 28) continue; // monthly / long stays are a different product
+    const per = ks.map(k => { let v = nightRates(k); const md = quant(v, .5); v = v.filter(x => x <= 2.5 * md); if (v.length < 3) return null; const peak = !!peakOf(k); return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
     if (per.length < ks.length / 2) continue;
-    const bench = rAvg(per.map(x => x.bench)), ours = b.gross_rent / b.nights, gap = ours - bench, peak = per.some(x => x.peak);
-    out.push({ set: state.set.name, home: label.get(b.comp_id), b, bench, ours, gap, pc: gap / bench * 100, tot: gap * b.nights, peak });
+    // Same basis as the comps' Airbnb nightly price: our rent + our +15% channel plan + fees folded into the nightly price
+    // (Track fee setup, 2026-10-13: Direct rent x1.58; Airbnb/VRBO bookings already carry the +15% plan -> x1.375). ESTIMATE.
+    const eq = /airbnb|\babb\b|vrbo|homeaway/i.test(b.channel || "") ? 1.375 : 1.58;
+    const bench = rAvg(per.map(x => x.bench)), rent = b.gross_rent / b.nights, ours = rent * eq, gap = ours - bench, peak = per.some(x => x.peak);
+    out.push({ set: state.set.name, home: label.get(b.comp_id), b, bench, rent, ours, gap, pc: gap / bench * 100, tot: gap / eq * b.nights, peak });
   }
   return out;
 }
@@ -1293,7 +1297,7 @@ async function runBookingQuality() {
 function bkHtml() {
   const rows = RP.bk.rows, low = rows.filter(x => x.pc <= -15).sort((p, q) => p.tot - q.tot), good = rows.filter(x => x.pc >= 10).sort((p, q) => q.tot - p.tot);
   const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const tbl = (list, kind) => !list.length ? `<p class="small muted">None right now.</p>` : `<div class="wrap"><table><tr><th>Home</th><th>Neighborhood</th><th>Stay</th><th>Nights</th><th>Channel</th><th>Booked on</th><th>Our rent/night</th><th>Comps${kind === "low" ? "" : ""}</th><th>Gap/night</th><th>Gap %</th><th>Whole stay</th></tr>${list.map(x => `<tr class="${kind === "low" ? "lowp" : "ok"}"><td>${escH(x.home)}${x.peak ? ' <span class="pill">holiday</span>' : ""}</td><td class="small">${escH(x.set)}</td><td>${fd(x.b.arrival)} – ${fd(x.b.departure)}</td><td>${x.b.nights}</td><td>${escH(x.b.channel || "")}</td><td>${x.b.booked_at ? fd(String(x.b.booked_at).slice(0, 10)) : "—"}</td><td>${fmt(x.ours)}</td><td>${fmt(x.bench)}</td><td>${fmt(x.gap)}</td><td>${Math.round(x.pc)}%</td><td><b>${fmt(x.tot)}</b></td></tr>`).join("")}</table></div>`;
+  const tbl = (list, kind) => !list.length ? `<p class="small muted">None right now.</p>` : `<div class="wrap"><table><tr><th>Home</th><th>Neighborhood</th><th>Stay</th><th>Nights</th><th>Channel</th><th>Booked on</th><th>Our rent/night</th><th>Ours, Airbnb basis</th><th>Comps, Airbnb basis</th><th>Gap %</th><th>Whole stay (rent)</th></tr>${list.map(x => `<tr class="${kind === "low" ? "lowp" : "ok"}"><td>${escH(x.home)}${x.peak ? ' <span class="pill">holiday</span>' : ""}</td><td class="small">${escH(x.set)}</td><td>${fd(x.b.arrival)} – ${fd(x.b.departure)}</td><td>${x.b.nights}</td><td>${escH(x.b.channel || "")}</td><td>${x.b.booked_at ? fd(String(x.b.booked_at).slice(0, 10)) : "—"}</td><td>${fmt(x.rent)}</td><td>${fmt(x.ours)}</td><td>${fmt(x.bench)}</td><td>${Math.round(x.pc)}%</td><td><b>${fmt(x.tot)}</b></td></tr>`).join("")}</table></div>`;
   const sum = l => fmt(Math.abs(l.reduce((a, x) => a + x.tot, 0)));
   return `<h4>🟡 Booked too low: ${low.length} stays · about ${sum(low)} under the comps (ESTIMATE)</h4>${tbl(low, "low")}
     <h4>🟢 Great bookings: ${good.length} stays · about ${sum(good)} over the comps (ESTIMATE)</h4>${tbl(good, "good")}
@@ -1324,8 +1328,8 @@ function holHtml() {
 }
 function wireRpDownloads() {
   document.querySelectorAll("#reportsBody [data-dl]").forEach(b => b.onclick = async () => { await needXLSX(); const wb = XLSX.utils.book_new(), stamp = iso(new Date());
-    if (b.dataset.dl === "bk") { const R = RP.bk.rows, h = ["Type", "Neighborhood", "Home", "Arrive", "Depart", "Nights", "Channel", "Booked on", "Our rent/night", "Comp benchmark", "Gap/night", "Gap %", "Whole stay", "Holiday"];
-      const row = (t, x) => [t, x.set, x.home, x.b.arrival, x.b.departure, x.b.nights, x.b.channel || "", String(x.b.booked_at || "").slice(0, 10), Math.round(x.ours), Math.round(x.bench), Math.round(x.gap), Math.round(x.pc) / 100, Math.round(x.tot), x.peak ? "yes" : ""];
+    if (b.dataset.dl === "bk") { const R = RP.bk.rows, h = ["Type", "Neighborhood", "Home", "Arrive", "Depart", "Nights", "Channel", "Booked on", "Our rent/night", "Ours, Airbnb basis", "Comps, Airbnb basis", "Gap %", "Whole stay (rent $)", "Holiday"];
+      const row = (t, x) => [t, x.set, x.home, x.b.arrival, x.b.departure, x.b.nights, x.b.channel || "", String(x.b.booked_at || "").slice(0, 10), Math.round(x.rent), Math.round(x.ours), Math.round(x.bench), Math.round(x.pc) / 100, Math.round(x.tot), x.peak ? "yes" : ""];
       const aoa = [["Booking quality (ESTIMATE) · " + stamp], ["Sources: Track bookings (our_bookings) + Desk comp nightly rates (AirROI/KeyData)."], [], h, ...R.filter(x => x.pc <= -15).map(x => row("Booked too low", x)), ...R.filter(x => x.pc >= 10).map(x => row("Great booking", x))];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Booking quality"); XLSX.writeFile(wb, `MM-Booking-Quality-${stamp}.xlsx`); }
     else { const H = RP.hol, raise = H.rows.filter(r => r.nu);
