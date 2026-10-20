@@ -1091,7 +1091,7 @@ function setView(v) {
   const m = $("app"); m.classList.remove("v-pulse", "v-hotels"); if (v !== "desk") m.classList.add("v-" + v);
   document.querySelectorAll("#viewnav .tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   if (v === "pulse") loadPulse();
-  if (v === "hotels") { $("hotCard").open = true; renderHotels(); }
+  if (v === "hotels") { $("hotCard").open = true; renderHotels(); } else if ($("hotCard").open) renderHotels();
   try { localStorage.setItem("mmView", v); } catch (e) {}
   window.scrollTo(0, 0);
 }
@@ -1214,7 +1214,9 @@ function renderHotels() {
   const N = 90, days = [...Array(N)].map((_, i) => addD(today, i)), W = 900, Ht = 240, L = 46, R = 12, T = 14, B = 26;
   const by = (arr, k) => arr.find(h => h.check_in === k);
   const ss = state.set && /studio|1br/i.test(state.set.name || "") ? state.set : state.set;
-  const comp = state.set && adrMode() ? days.map(k => adrDay(k).adr) : days.map(() => null);
+  // The neighborhood comp line only shows on the Desk view (for the neighborhood picked there), not on the Hotels page (Brandon 2026-10-20).
+  const showComp = !!(state.set && adrMode() && !$("app").classList.contains("v-hotels"));
+  const comp = showComp ? days.map(k => adrDay(k).adr) : days.map(() => null);
   const vals = [...pc.map(h => +h.p75), ...pc.map(pre), ...hb.map(pre), ...comp.filter(x => x != null)];
   const ymax = Math.max(100, ...vals) * 1.1, x = i => L + i * (W - L - R) / (N - 1), y = v => T + (Ht - T - B) * (1 - v / ymax);
   const line = (f, col, dash) => { let d = "", pen = false; days.forEach((k, i) => { const v = f(k, i); if (v == null || isNaN(v)) { pen = false; return; } d += (pen ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true; });
@@ -1225,7 +1227,7 @@ function renderHotels() {
   const ticks = days.map((k, i) => k.slice(8) === "01" || i === 0 ? `<text x="${x(i)}" y="${Ht - 8}" font-size="10" fill="var(--muted)">${new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text>` : "").join("");
   const hit = days.map((k, i) => `<rect data-hk="${k}" x="${x(i) - 5}" y="${T}" width="10" height="${Ht - T - B}" fill="transparent" style="cursor:pointer"><title>${k}${by(pc, k) ? ` · Park City hotels $${Math.round(pre(by(pc, k)))} (${by(pc, k).hotels} with rooms)` : ""}${by(hb, k) ? ` · Heber $${Math.round(pre(by(hb, k)))}` : ""}${comp[i] ? ` · ${state.set.name} comps $${Math.round(comp[i])}` : ""}</title></rect>`).join("");
   const cnt = days.map((k, i) => { const h = by(pc, k); return h ? `<rect x="${x(i) - 3}" y="${60 - h.hotels * 2.5}" width="6" height="${h.hotels * 2.5}" fill="#0e7c66" opacity=".6"><title>${k}: ${h.hotels} Park City hotels showing rooms</title></rect>` : ""; }).join("");
-  $("hotBody").innerHTML = `<div class="legend"><span><i style="background:#0e7c66;height:3px"></i>Park City hotels, median before tax</span><span><i style="background:#0e7c66;opacity:.2;height:10px"></i>middle half of Park City hotels</span><span><i style="background:#c98a1b;height:3px"></i>Heber / Jordanelle hotels</span>${state.set && adrMode() ? `<span><i style="background:#7c5cc4;height:3px"></i>${escH(state.set.name)} comps, daily rate (ADR)</span>` : ""}</div>
+  $("hotBody").innerHTML = `<div class="legend"><span><i style="background:#0e7c66;height:3px"></i>Park City hotels, median before tax</span><span><i style="background:#0e7c66;opacity:.2;height:10px"></i>middle half of Park City hotels</span><span><i style="background:#c98a1b;height:3px"></i>Heber / Jordanelle hotels</span>${showComp ? `<span><i style="background:#7c5cc4;height:3px"></i>${escH(state.set.name)} comps, daily rate (ADR)</span>` : ""}</div>
     <div class="dchart" id="hotChart"><svg viewBox="0 0 ${W} ${Ht}" style="width:100%;height:auto">${grid}${band}${line(k => by(pc, k) && pre(by(pc, k)), "#0e7c66")}${line(k => by(hb, k) && pre(by(hb, k)), "#c98a1b")}${line((k, i) => comp[i], "#7c5cc4", true)}${dots(pc, "#0e7c66")}${dots(hb, "#c98a1b")}${ticks}<line class="xh" y1="${T}" y2="${Ht - B}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>${hit}</svg><div class="tip"></div></div>
     <div class="small muted" style="margin:6px 0 2px">Park City hotels still showing rooms (fewer = tighter market)</div><svg viewBox="0 0 ${W} 64" style="width:100%;height:auto">${cnt}</svg>
     <div id="hotDay"><p class="small" style="color:var(--teal2)">Click a night on the chart to see every hotel and its price.</p></div>
