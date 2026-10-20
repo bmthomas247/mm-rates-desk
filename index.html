@@ -1276,7 +1276,7 @@ function bookingQualityForSet() { // uses the loaded set (state.*)
     if (b.kind !== "guest" || b.status === "Cancelled" || !label.has(b.comp_id) || !b.nights || !b.gross_rent || b.departure <= today || b.arrival > end) continue;
     const ks = []; for (let k = b.arrival < today ? today : b.arrival; k < b.departure; k = addD(k, 1)) ks.push(k);
     if (b.nights >= 28) continue; // monthly / long stays are a different product
-    const per = ks.map(k => { let v = nightRates(k); const md = quant(v, .5); v = v.filter(x => x <= 2.5 * md); if (v.length < 3) return null; const peak = !!peakOf(k); return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
+    const per = ks.map(k => { let v = nightRates(k); const md = quant(v, .5); v = v.filter(x => x <= 2.5 * md); if (v.length < 5) return null; const peak = !!peakOf(k); // 2026-10-20: 5+ priced comps per night (3 let thin sets like White Pine show fake gaps) return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
     if (per.length < ks.length / 2) continue;
     // Same basis as the comps' Airbnb nightly price: our rent + our +15% channel plan + fees folded into the nightly price
     // (Track fee setup, 2026-10-13: Direct rent x1.58; Airbnb/VRBO bookings already carry the +15% plan -> x1.375). ESTIMATE.
