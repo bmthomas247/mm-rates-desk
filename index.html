@@ -254,12 +254,13 @@ async function boot() {
   // Accordion by county, with search by neighborhood, our unit or our short code (Brandon 2026-10-14).
   for (const g of groups) { g.county = countyOf(g.c, g.items[0][0]); g.code = codeOf(g.c); }
   const counties = [...new Set(groups.map(g => g.county))].sort((a, b) => (COUNTY_ORDER.indexOf(a) + 99 * (COUNTY_ORDER.indexOf(a) < 0)) - (COUNTY_ORDER.indexOf(b) + 99 * (COUNTY_ORDER.indexOf(b) < 0)));
-  let openC = {}; try { openC = JSON.parse(localStorage.getItem("mmCounties") || "{}"); } catch (e) {}
+  // One county open at a time: opening one closes the others (Brandon 2026-10-20). Last one opened is remembered.
+  let openOne = null; try { openOne = localStorage.getItem("mmCounty"); } catch (e) {}
   const row = g => `<div class="tgrp" data-key="${String((g.c + " " + g.code + " " + g.items.map(([s]) => s.name).join(" ")).toLowerCase().replace(/"/g, ""))}"><span class="tgname">${g.c}${g.code ? `<span class="tgcode">${g.code}</span>` : ""}</span>${g.items.map(([s, t]) =>
     `<button class="tab" data-id="${s.id}" title="${s.name}">${(t || s.name).replace(/^Studio\s*[–-]\s*/i, "Studio ")}</button>`).join("")}</div>`;
-  $("tabs").innerHTML = counties.map(c => `<details class="county" data-c="${c}"${openC[c] === false ? "" : " open"}><summary>${c}<span class="small muted">${groups.filter(g => g.county === c).length} neighborhoods</span></summary><div class="tabs">${groups.filter(g => g.county === c).map(row).join("")}</div></details>`).join("");
+  $("tabs").innerHTML = counties.map(c => `<details class="county" data-c="${c}"${openOne === c ? " open" : ""}><summary>${c}<span class="small muted">${groups.filter(g => g.county === c).length} neighborhoods</span></summary><div class="tabs">${groups.filter(g => g.county === c).map(row).join("")}</div></details>`).join("");
   $("tabs").onclick = e => e.target.dataset.id && load(e.target.dataset.id);
-  $("tabs").querySelectorAll("details.county").forEach(d => d.addEventListener("toggle", () => { if ($("setq").value) return; openC[d.dataset.c] = d.open; try { localStorage.setItem("mmCounties", JSON.stringify(openC)); } catch (e) {} }));
+  $("tabs").querySelectorAll("details.county").forEach(d => d.addEventListener("toggle", () => { if ($("setq").value) return; if (d.open) $("tabs").querySelectorAll("details.county[open]").forEach(o => { if (o !== d) o.open = false; }); else if ($("tabs").querySelector("details.county[open]")) return; try { localStorage.setItem("mmCounty", d.open ? d.dataset.c : ""); } catch (e) {} }));
   // our unit labels per set, so "1403" or "BHL 1403" finds the right set
   sb.from("comps").select("set_id,label").eq("tier", "Ours").eq("active", true).then(({ data }) => {
     const bySet = {}; for (const r of data || []) (bySet[r.set_id] = bySet[r.set_id] || []).push(r.label.replace(/\s*\(.*?\)\s*$/, ""));
