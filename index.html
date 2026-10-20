@@ -50,7 +50,8 @@ a{color:var(--teal2)}
 .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
 #login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
-#pulse{display:none}#rater{display:none}main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){display:none!important}
+#pulse{display:none}#rater{display:none}#reports{display:none}main.v-reports #reports{display:block}main.v-reports>*:not(#viewnav):not(#reports){display:none!important}.rpsec{border-top:1px solid var(--line);padding:12px 0}.rpsec h3{margin:0 0 4px;font-size:15px}.rpsec h4{margin:12px 0 4px;font-size:14px}.rpsec input[type=date]{width:auto}
+main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){display:none!important}
 .rtabs,.rrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.rrow select{width:auto;max-width:100%}
 .rphotos{display:flex;gap:6px;overflow-x:auto;padding:4px 0}.rphotos img{height:110px;border-radius:8px;display:block}.rphotos.big img{height:170px}
 .raibox{background:var(--tealbg);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:13px}
@@ -131,7 +132,8 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
     <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
     <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
-  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><button class="tab" data-v="rater">⭐ Home Rater</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
+  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><button class="tab" data-v="rater">⭐ Home Rater</button><button class="tab" data-v="reports">📋 Reports</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
+  <div class="card" id="reports"><h2 style="margin:0 0 8px">📋 Reports</h2><p class="small muted" style="margin:0 0 8px">Reports to share with owners or between ourselves. Kolleen-facing downloads carry rates only (no comp data).</p><div id="reportsBody"></div></div>
   <div class="card" id="rater"><h2 style="margin:0 0 8px">⭐ Home Rater</h2><p class="small muted" style="margin:0 0 8px">Score our homes 1–5 and pick which of two homes is nicer. Everyone's scores are combined in Rankings, next to Claude's AI score from the listing photos (ESTIMATE). The pricing engine will use these to price nicer homes higher within the same area.</p><div id="raterBody"></div></div>
   <div class="card" id="pulse"><h2 style="margin:0 0 8px">📈 Market pulse</h2><div id="pulseBody"></div></div>
   <div class="setnav"><div class="pickhead"><h2 style="margin:0">1 · Pick a neighborhood or home</h2><span id="pickedLbl" class="pickedlbl hidden"></span><details id="homeSel" class="homesel hidden"><summary id="homeSelSum"></summary><div id="homeSelBox" class="homeselbox"></div></details></div><div class="setfind"><input id="setq" type="search" placeholder="Search neighborhood, unit or code (BHV, BHL 1403, 625-A4…)" autocomplete="off"><span id="setqn" class="small muted"></span></div><div id="tabs"></div></div>
@@ -1124,10 +1126,11 @@ state.mk = { events: [], weather: [], loaded: false };
 // show rooms (fewer = tighter market). It does NOT show hotels' booked nights.
 // ===== Views: Desk | Market pulse | Hotels (Brandon 2026-10-20) =====
 function setView(v) {
-  const m = $("app"); m.classList.remove("v-pulse", "v-hotels"); if (v !== "desk") m.classList.add("v-" + v);
+  const m = $("app"); m.classList.remove("v-pulse", "v-hotels", "v-rater", "v-reports"); if (v !== "desk") m.classList.add("v-" + v);
   document.querySelectorAll("#viewnav .tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   if (v === "pulse") loadPulse();
   if (v === "rater") loadRater();
+  if (v === "reports" && !RP.busy) renderReports();
   if (v === "hotels") { $("hotCard").open = true; renderHotels(); } else if ($("hotCard").open) renderHotels();
   try { localStorage.setItem("mmView", v); } catch (e) {}
   window.scrollTo(0, 0);
@@ -1240,6 +1243,116 @@ function renderPulse() {
     out.push(`<h3>🎟️ Upcoming events</h3><ul class="small" style="margin:0;padding-left:18px">${ev.slice(0, 25).map(e => `<li><b>${escH(e.extra?.when || e.extra?.start || "")}</b> · <a href="${escH(e.url)}" target="_blank" rel="noopener">${escH(e.label)}</a> <span class="muted">· ${escH(e.extra?.venue || "")} · ${/heber/i.test(e.series) ? "Heber" : "Park City"}</span></li>`).join("")}</ul>${srcLine("Google Events via SerpApi", null)}`);
   }
   $("pulseBody").innerHTML = out.map(s => `<section style="margin-bottom:18px">${s}</section>`).join("");
+}
+// ===== Reports (Brandon 2026-10-20): booking quality across all homes, owner report, holiday check. All ESTIMATE. =====
+const RP = { bk: null, hol: null, busy: false };
+const rAvg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+async function needXLSX() { if (window.XLSX) return; await new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }); }
+function renderReports() {
+  const ours = []; // our homes across sets, for the owner report picker
+  const sets = (state.sets || []).filter(s => s.active !== false);
+  $("reportsBody").innerHTML = `
+  <section class="rpsec"><h3>🟡 Booked too low · 🟢 Great bookings <span class="small muted">all our homes, upcoming guest stays (next 180 days)</span></h3>
+    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Normal nights compare to the comp average; holiday/event nights compare to the comps' top quarter (holiday rule: be the highest). Too low = 15%+ under; great = 10%+ over. ESTIMATE.</p>
+    <div class="rrow"><button class="tab on" id="rpRunBk">Run for all neighborhoods</button><span id="rpBkMsg" class="small muted">${RP.bk ? "Last run " + RP.bk.at.toLocaleTimeString() : "Takes about a minute."}</span></div><div id="rpBkOut">${RP.bk ? bkHtml() : ""}</div></section>
+  <section class="rpsec"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
+    <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a clean page you can print or save as PDF. No other owners' names; comps shown only as averages.</span></div></section>
+  <section class="rpsec"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
+    <div class="rrow"><label class="small">From <input type="date" id="rpA" value="2026-12-20"></label><label class="small">To (last night) <input type="date" id="rpB" value="2027-01-04"></label><label class="small"><input type="checkbox" id="rpPeak" checked> Holiday rules (target = comps' top, no cuts)</label><button class="tab on" id="rpRunHol">Run</button><span id="rpHolMsg" class="small muted"></span></div><div id="rpHolOut">${RP.hol ? holHtml() : ""}</div></section>`;
+  const fillHomes = async () => { const sid = $("rpSet").value; const r = await sb.from("comps").select("id,label").eq("set_id", sid).eq("tier", "Ours").eq("active", true);
+    $("rpHome").innerHTML = (r.data || []).map(c => `<option value="${escH(c.id)}">${escH((c.label || c.id).replace(/\s*\(.*?\)\s*$/, ""))}</option>`).join(""); };
+  $("rpSet").onchange = fillHomes; fillHomes();
+  $("rpRunBk").onclick = runBookingQuality; $("rpRunHol").onclick = runHoliday; $("rpOwner").onclick = ownerReport;
+  wireRpDownloads();
+}
+function bookingQualityForSet() { // uses the loaded set (state.*)
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, 180), out = [];
+  const label = new Map(state.comps.filter(c => c.tier === "Ours").map(c => [c.id, (c.label || "").replace(/\s*\(.*\)\s*$/, "")]));
+  const nightRates = k => { const by = {}; for (const n of state.nightly || []) { if (n.tier === "Ours" || n.tier === "Secondary") continue;
+      const off = Math.round((new Date(k + "T12:00:00") - new Date(n.start_date + "T12:00:00")) / 864e5);
+      if (off >= 0 && off < (n.rates || []).length && n.rates[off] != null) (by[n.comp_id] ||= {})[n.channel] = +n.rates[off]; }
+    return Object.values(by).map(x => x.Airbnb ?? x.VRBO).filter(x => x != null); };
+  for (const b of state.bookings || []) {
+    if (b.kind !== "guest" || b.status === "Cancelled" || !label.has(b.comp_id) || !b.nights || !b.gross_rent || b.departure <= today || b.arrival > end) continue;
+    const ks = []; for (let k = b.arrival < today ? today : b.arrival; k < b.departure; k = addD(k, 1)) ks.push(k);
+    const per = ks.map(k => { const v = nightRates(k); if (v.length < 2) return null; const peak = !!peakOf(k); return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
+    if (per.length < ks.length / 2) continue;
+    const bench = rAvg(per.map(x => x.bench)), ours = b.gross_rent / b.nights, gap = ours - bench, peak = per.some(x => x.peak);
+    out.push({ set: state.set.name, home: label.get(b.comp_id), b, bench, ours, gap, pc: gap / bench * 100, tot: gap * b.nights, peak });
+  }
+  return out;
+}
+async function runBookingQuality() {
+  if (RP.busy) return; RP.busy = true; const keep = state.set?.id, msg = $("rpBkMsg"), all = [];
+  try { const sets = state.sets.filter(x => x.active !== false);
+    for (let i = 0; i < sets.length; i++) { msg.textContent = `Working… ${i + 1} of ${sets.length} neighborhoods`; await load(sets[i].id); all.push(...bookingQualityForSet()); }
+    RP.bk = { at: new Date(), rows: all }; msg.textContent = `Done: ${all.length} upcoming stays checked.`; $("rpBkOut").innerHTML = bkHtml(); wireRpDownloads();
+  } catch (e) { msg.innerHTML = `<span class="up">${escH(e.message || e)}</span>`; }
+  finally { RP.busy = false; if (keep) { await load(keep); } setView("reports"); }
+}
+function bkHtml() {
+  const rows = RP.bk.rows, low = rows.filter(x => x.pc <= -15).sort((p, q) => p.tot - q.tot), good = rows.filter(x => x.pc >= 10).sort((p, q) => q.tot - p.tot);
+  const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const tbl = (list, kind) => !list.length ? `<p class="small muted">None right now.</p>` : `<div class="wrap"><table><tr><th>Home</th><th>Neighborhood</th><th>Stay</th><th>Nights</th><th>Channel</th><th>Booked on</th><th>Our rent/night</th><th>Comps${kind === "low" ? "" : ""}</th><th>Gap/night</th><th>Gap %</th><th>Whole stay</th></tr>${list.map(x => `<tr class="${kind === "low" ? "lowp" : "ok"}"><td>${escH(x.home)}${x.peak ? ' <span class="pill">holiday</span>' : ""}</td><td class="small">${escH(x.set)}</td><td>${fd(x.b.arrival)} – ${fd(x.b.departure)}</td><td>${x.b.nights}</td><td>${escH(x.b.channel || "")}</td><td>${x.b.booked_at ? fd(String(x.b.booked_at).slice(0, 10)) : "—"}</td><td>${fmt(x.ours)}</td><td>${fmt(x.bench)}</td><td>${fmt(x.gap)}</td><td>${Math.round(x.pc)}%</td><td><b>${fmt(x.tot)}</b></td></tr>`).join("")}</table></div>`;
+  const sum = l => fmt(Math.abs(l.reduce((a, x) => a + x.tot, 0)));
+  return `<h4>🟡 Booked too low: ${low.length} stays · about ${sum(low)} under the comps (ESTIMATE)</h4>${tbl(low, "low")}
+    <h4>🟢 Great bookings: ${good.length} stays · about ${sum(good)} over the comps (ESTIMATE)</h4>${tbl(good, "good")}
+    <div class="rrow"><button class="tab" data-dl="bk">Download as Excel</button><span class="small muted">Sources: Track bookings (read-only copy, our_bookings) and the Desk's comp nightly rates (AirROI / KeyData), latest pulls. Run ${RP.bk.at.toLocaleString()}.</span></div>`;
+}
+async function runHoliday() {
+  if (RP.busy) return; RP.busy = true; const keep = state.set?.id, msg = $("rpHolMsg"), a = $("rpA").value, b = $("rpB").value, peak = $("rpPeak").checked;
+  try { if (!a || !b || b < a) throw new Error("Pick a start and end night."); const nights = []; for (let k = a; k <= b; k = addD(k, 1)) nights.push(k);
+    const w = { name: `${a} – ${b}`, nights, peak: peak ? "Holiday" : null }, rows = [], sets = state.sets.filter(x => x.active !== false), r5 = v => Math.round(v / 5) * 5;
+    for (let i = 0; i < sets.length; i++) { msg.textContent = `Working… ${i + 1} of ${sets.length}`; await load(sets[i].id);
+      for (const r of repNights(w)) { const hb = homeBookings(r.h.id), booked = nights.filter(k => hb.night[k]).length;
+        let act = "Check by hand", nu = null, note = "";
+        if (!r.open) act = "Booked"; else if (r.rent != null && r.sug != null && r.n >= 2) { const c = r.sug / r.rent - 1;
+          if (c >= 0.05) { act = "Raise"; nu = c > 0.5 ? r5(r.rent + (r.sug - r.rent) / 2) : r5(r.sug); if (c > 0.5) note = `Step 1. Go to $${r5(r.sug).toLocaleString()} if it books`; }
+          else if (c <= -0.05) { act = peak && !r.highest ? "Hold (above comps)" : peak ? "Hold (holiday)" : "Lower"; if (act === "Lower") nu = c < -0.25 ? r5(r.rent * 0.75) : r5(r.sug); }
+          else act = "Hold (on target)"; }
+        rows.push({ set: state.set.name, home: (r.h.label || "").replace(/\s*\(.*\)\s*$/, ""), open: r.open, booked, rent: r.rent, sug: r.sug, n: r.n, act, nu, note }); } }
+    RP.hol = { a, b, peak, rows, at: new Date() }; msg.textContent = `Done: ${rows.filter(r => r.act === "Raise").length} raises.`; $("rpHolOut").innerHTML = holHtml(); wireRpDownloads();
+  } catch (e) { msg.innerHTML = `<span class="up">${escH(e.message || e)}</span>`; }
+  finally { RP.busy = false; if (keep) await load(keep); setView("reports"); }
+}
+function holHtml() {
+  const H = RP.hol, rows = H.rows.slice().sort((x, y) => (x.act !== "Raise") - (y.act !== "Raise") || ((y.nu || 0) - (y.rent || 0)) - ((x.nu || 0) - (x.rent || 0)));
+  const cnt = k => H.rows.filter(r => r.act.startsWith(k)).length;
+  return `<p class="small">${cnt("Raise")} raise · ${cnt("Lower")} lower · ${cnt("Hold")} hold · ${cnt("Booked")} booked · ${cnt("Check")} check by hand</p>
+    <div class="wrap" style="max-height:420px;overflow:auto"><table><tr><th>Neighborhood</th><th>Home</th><th>Open</th><th>Booked/blocked</th><th>Action</th><th>Rent now</th><th>New</th><th>Comp target</th><th>Notes</th></tr>${rows.map(r => `<tr><td class="small">${escH(r.set)}</td><td>${escH(r.home)}</td><td>${r.open}</td><td>${r.booked}</td><td>${escH(r.act)}</td><td>${fmt(r.rent)}</td><td>${r.nu ? "<b>" + fmt(r.nu) + "</b>" : "—"}</td><td>${fmt(r.sug)}</td><td class="small">${escH(r.note)}</td></tr>`).join("")}</table></div>
+    <div class="rrow"><button class="tab" data-dl="kolleen">Download Kolleen sheet (rates only)</button><button class="tab" data-dl="hol">Download internal sheet</button><span class="small muted">Kolleen sheet = homes, current, new, $ and % only (no comp data). Sources: Desk comp checks + Track rent, latest pulls. ESTIMATE.</span></div>`;
+}
+function wireRpDownloads() {
+  document.querySelectorAll("#reportsBody [data-dl]").forEach(b => b.onclick = async () => { await needXLSX(); const wb = XLSX.utils.book_new(), stamp = iso(new Date());
+    if (b.dataset.dl === "bk") { const R = RP.bk.rows, h = ["Type", "Neighborhood", "Home", "Arrive", "Depart", "Nights", "Channel", "Booked on", "Our rent/night", "Comp benchmark", "Gap/night", "Gap %", "Whole stay", "Holiday"];
+      const row = (t, x) => [t, x.set, x.home, x.b.arrival, x.b.departure, x.b.nights, x.b.channel || "", String(x.b.booked_at || "").slice(0, 10), Math.round(x.ours), Math.round(x.bench), Math.round(x.gap), Math.round(x.pc) / 100, Math.round(x.tot), x.peak ? "yes" : ""];
+      const aoa = [["Booking quality (ESTIMATE) · " + stamp], ["Sources: Track bookings (our_bookings) + Desk comp nightly rates (AirROI/KeyData)."], [], h, ...R.filter(x => x.pc <= -15).map(x => row("Booked too low", x)), ...R.filter(x => x.pc >= 10).map(x => row("Great booking", x))];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Booking quality"); XLSX.writeFile(wb, `MM-Booking-Quality-${stamp}.xlsx`); }
+    else { const H = RP.hol, raise = H.rows.filter(r => r.nu);
+      if (b.dataset.dl === "kolleen") { const aoa = [[`Nightly rate changes · ${H.a} to ${H.b} (nights)`], ["New rates are what we want to earn after any discount; keep offsetting discounts by raising the posted price."], [], ["Neighborhood", "Home", "Current nightly rate", "New nightly rate", "$ / night", "%", "Notes", "Done?"], ...raise.map(r => [r.set, r.home, Math.round(r.rent / 5) * 5, r.nu, r.nu - Math.round(r.rent / 5) * 5, Math.round((r.nu / (Math.round(r.rent / 5) * 5) - 1) * 100) / 100, r.note, ""])];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Rate changes"); XLSX.writeFile(wb, `MM-Rate-Changes-${H.a}-to-${H.b}.xlsx`); }
+      else { const aoa = [[`INTERNAL date-range check ${H.a} to ${H.b} (ESTIMATE)`], ["Sources: Desk comp checks + Track nightly rent, latest pulls; run " + H.at.toLocaleString()], [], ["Neighborhood", "Home", "Open nights", "Booked/blocked", "Action", "Rent now", "New", "Comp target", "Nights with 2+ comps", "Notes"], ...H.rows.map(r => [r.set, r.home, r.open, r.booked, r.act, r.rent && Math.round(r.rent), r.nu, r.sug && Math.round(r.sug), r.n, r.note])];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "All homes"); XLSX.writeFile(wb, `MM-Date-Check-INTERNAL-${H.a}-to-${H.b}.xlsx`); } } });
+}
+async function ownerReport() {
+  const sid = $("rpSet").value, hid = $("rpHome").value; if (!hid) return; const keep = state.set?.id;
+  const wnd = window.open("", "_blank"); if (wnd) wnd.document.write("<p style='font:14px system-ui'>Building the owner report…</p>");
+  await load(sid); const h = state.comps.find(c => c.id === hid), name = (h?.label || hid).replace(/\s*\(.*?\)\s*$/, ""), hb = homeBookings(hid);
+  const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const win = n => { const e = addD(today, n); let g = 0, o = 0, bl = 0; for (const [k, v] of Object.entries(hb.night)) if (k >= today && k < e) { if (v.kind === "guest") g++; else if (v.kind === "owner") o++; else bl++; } return { g, o, bl, open: n - g - o - bl }; };
+  const w30 = win(30), w90 = win(90), w180 = win(180);
+  const stays = hb.rows.filter(b => b.kind === "guest" && b.status !== "Cancelled" && b.departure > today).sort((a, b) => a.arrival < b.arrival ? -1 : 1);
+  const rent = stays.reduce((a, b) => a + (+b.gross_rent || 0), 0), nights = stays.reduce((a, b) => a + (+b.nights || 0), 0);
+  const q = bookingQualityForSet().filter(x => x.b.comp_id === hid), qmap = new Map(q.map(x => [x.b.reservation_id, x]));
+  const holi = PEAKS.filter(p => p[1] >= today).map(([a, b, n]) => { let g = 0, t = 0; for (let k = a; k <= b; k = addD(k, 1)) { t++; if (hb.night[k]?.kind === "guest") g++; } return `<tr><td>${escH(n)}</td><td>${fd(a)} – ${fd(b)}</td><td>${g} of ${t} nights booked</td></tr>`; }).join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escH(name)} · Owner report</title><style>body{font:14px/1.45 system-ui,sans-serif;color:#1a1a1a;max-width:860px;margin:24px auto;padding:0 16px}h1{font-size:22px;margin:0}h2{font-size:16px;margin:22px 0 6px}.muted{color:#667}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e3e6df}.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.t{border:1px solid #e3e6df;border-radius:10px;padding:10px}.t b{font-size:20px;display:block}.bar{border-top:4px solid #88b535;padding-top:10px}@media print{button{display:none}}</style></head><body>
+    <div class="bar"><h1>${escH(name)}</h1><div class="muted">${escH(state.set.name)} · Moose Management · report date ${fd(today)}</div></div><button onclick="print()" style="margin-top:10px">Print / save as PDF</button>
+    <h2>On the books</h2><div class="tiles"><div class="t"><span class="muted">Next 30 nights</span><b>${w30.g} booked</b><span class="muted">${w30.open} open · ${w30.o} owner</span></div><div class="t"><span class="muted">Next 90 nights</span><b>${w90.g} booked</b><span class="muted">${w90.open} open · ${w90.o} owner</span></div><div class="t"><span class="muted">Next 180 nights</span><b>${w180.g} booked</b><span class="muted">${w180.open} open · ${w180.o} owner</span></div><div class="t"><span class="muted">Upcoming guest rent</span><b>${fmt(rent)}</b><span class="muted">${nights} nights · avg ${nights ? fmt(rent / nights) : "—"}/night</span></div></div>
+    <h2>Upcoming guest stays</h2>${stays.length ? `<table><tr><th>Stay</th><th>Nights</th><th>Channel</th><th>Rent</th><th>Per night</th><th>vs similar homes nearby</th></tr>${stays.map(b => { const x = qmap.get(b.reservation_id); return `<tr><td>${fd(b.arrival)} – ${fd(b.departure)}</td><td>${b.nights}</td><td>${escH(b.channel || "")}</td><td>${fmt(b.gross_rent)}</td><td>${fmt(b.gross_rent / Math.max(1, b.nights))}</td><td>${x ? (x.pc >= 0 ? "+" : "") + Math.round(x.pc) + "%" : "—"}</td></tr>`; }).join("")}</table>` : `<p class="muted">No upcoming guest stays yet.</p>`}
+    <h2>Holidays and peak weeks</h2><table><tr><th>Window</th><th>Dates</th><th>Status</th></tr>${holi}</table>
+    <p class="muted" style="margin-top:20px;font-size:12px">"vs similar homes nearby" compares this stay's nightly rent with the average nightly rate of comparable homes in the same area for the same nights (holiday nights: the top quarter). Owner stays and owner blocks are not counted as bookings. Sources: Track reservations; comparable homes' published nightly rates (Airbnb/VRBO data services), latest pulls. Estimates.</p></body></html>`;
+  if (wnd) { wnd.document.open(); wnd.document.write(html); wnd.document.close(); } else alert("Allow pop-ups for the Desk to open the owner report.");
+  if (keep && keep !== sid) await load(keep); setView("reports");
 }
 // ===== Home Rater (Brandon 2026-10-20): staff score our homes 1-5 + head-to-head; Claude's AI score shown beside (ESTIMATE). =====
 const RCATS = [["inside", "Inside condition", "Walls, floors, kitchen, baths"], ["clean", "Clean & well kept", "Wear and tear, things that break"], ["furniture", "Furniture & decor", "Beds, couches, finishes"], ["amenities", "Amenities", "Hot tub, garage, game room, views"], ["location", "Location", "Lifts, Main Street, shuttle, drive"], ["overall", "Overall", "Your gut score"]];
