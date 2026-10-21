@@ -152,7 +152,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <button class="tab on" id="colleenBtn" title="Builds the clean rate + minimum-stay sheet for every neighborhood (no comp data on it)">Build Kolleen sheet (all neighborhoods)</button>
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
     <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
-    <span id="weeklyMsg" class="small muted"></span></div><section style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><h3 style="margin:0 0 4px;font-size:16px">✅ Pricing check · what to bring up with Kolleen this week</h3><div id="kolOut"></div></section><div id="landOut"></div></div>
+    <span id="weeklyMsg" class="small muted"></span></div><section style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><h3 style="margin:0 0 4px;font-size:16px">✅ Pricing check · what to bring up with Kolleen this week</h3><div id="kolOut"></div></section><section style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><h3 style="margin:0 0 4px;font-size:16px">🧮 Our price vs Beyond <span class="small muted">(shadow pricing: what our own tool would charge, never sent anywhere)</span></h3><div id="ovbOut"></div></section><div id="landOut"></div></div>
   <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk" title="Desk: comps, rates and calendars"><span class="ic">🏠</span><span>Desk</span></button><button class="tab" data-v="pulse" title="Market pulse: searches, markets, flights, news, events"><span class="ic">📈</span><span>Market pulse</span></button><button class="tab" data-v="hotels" title="Hotel rates near our homes"><span class="ic">🏨</span><span>Hotels</span></button><button class="tab" data-v="rater" title="Score and rank our homes"><span class="ic">⭐</span><span>Home Rater</span></button><button class="tab" data-v="reports" title="Booked too low, great bookings, Airbnb rank, owner reports"><span class="ic">📋</span><span>Reports</span></button><button class="tab" data-v="beyond" title="Weekly Kolleen sheet, Did it land?, matches to review"><span class="ic">🤝</span><span>Beyond Pricing</span></button><span class="small muted navnote">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
   <div class="card" id="reports"><h2 style="margin:0 0 8px">📋 Reports</h2><p class="small muted" style="margin:0 0 8px">Reports to share with owners or between ourselves. Kolleen-facing downloads carry rates only (no comp data).</p><div id="reportsBody"></div></div>
   <div class="card" id="rater"><h2 style="margin:0 0 8px">⭐ Home Rater</h2><p class="small muted" style="margin:0 0 8px">Score our homes 1–5 and pick which of two homes is nicer. Everyone's scores are combined in Rankings, next to Claude's AI score from the listing photos (ESTIMATE). The pricing engine will use these to price nicer homes higher within the same area.</p><div id="raterBody"></div></div>
@@ -1155,7 +1155,7 @@ function setView(v) {
   if (v === "pulse") loadPulse();
   if (v === "rater") loadRater();
   if (v === "reports" && !RP.busy) renderReports();
-  if (v === "beyond") kolRender();
+  if (v === "beyond") { kolRender(); ovbRender(); }
   if (v === "hotels") { $("hotCard").open = true; renderHotels(); } else if ($("hotCard").open) renderHotels();
   try { localStorage.setItem("mmView", v); } catch (e) {}
   window.scrollTo(0, 0);
@@ -1763,6 +1763,82 @@ function kolCheck(g) {
   const M = new Map(); for (const i of items) { const k = i.type + "|" + (i.x?.id || i.lab), o = M.get(k);
     if (!o) M.set(k, { ...i }); else { o.ask += " " + i.ask.replace(/^.*?\), /, "Also "); o.why += "; " + i.why; o.imp = (o.imp || 0) + (i.imp || 0); } }
   return [...M.values()].sort((a, b) => (b.imp || 0) - (a.imp || 0));
+}
+// ===== Our price vs Beyond (Brandon 2026-10-21): shadow pricing from shadow_price.py, night by night next to Beyond's posted
+// price. Shadow only - nothing here is sent to Beyond or Track. Every number is an ESTIMATE.
+const OVB = { d: null, busy: false, sid: "*", q: "", open: null, win: 90 };
+const OVB_WHY = [[/^M/, "Ski season: middle of the comps"], [/^O/, "Off-season: low end of comps that actually booked"],
+  [/^o/, "Off-season: low end of open comps (not enough booked comps yet)"], [/^h14/, "Holiday, 8–14 days out and open: upper comps (75th pct)"],
+  [/^h7/, "Holiday, last week and open: normal ski-season rate so it books"], [/^H/, "Holiday / event: top of the comps (90th pct)"], [/^x/, "Not enough priced comps"]];
+const ovbWhy = c => { if (!c) return ""; const out = [(OVB_WHY.find(([re]) => re.test(c)) || [, c])[1]];
+  if (/\+10/.test(c)) out.push("+10% comps 70%+ booked"); else if (/\+5/.test(c)) out.push("+5% comps 50%+ booked");
+  if (/T/.test(c)) out.push("Thursday = halfway Wed/Fri"); const l = c.match(/L(\d+)/); if (l) out.push(`last-minute −${l[1]}%`);
+  if (/W/.test(c)) out.push("held at damage guard"); if (/F/.test(c)) out.push("never-below floor"); return out.join(" · "); };
+async function ovbLoad(force) {
+  if (OVB.d && !force) return OVB.d;
+  const last = (await sb.from("shadow_prices").select("run_id,run_date,version").order("id", { ascending: false }).limit(1)).data?.[0];
+  if (!last) return (OVB.d = { rows: [] });
+  const r = await allRows(() => sb.from("shadow_prices").select("comp_id,set_id,start_date,price,rule,comp_median,comp_n,comp_fill,beyond_posted,beyond_min,min_stay,notes", { count: "exact" }).eq("run_id", last.run_id).order("id"));
+  const lab = Object.fromEntries(((await sb.from("comps").select("id,label").eq("tier", "Ours")).data || []).map(c => [c.id, c.label]));
+  const sn = Object.fromEntries((state.sets || []).map(s => [s.id, s.name]));
+  const rows = (r.data || []).map(h => ({ ...h, name: houseName(lab[h.comp_id] || h.comp_id, sn[h.set_id] || ""), set: sn[h.set_id] || h.set_id }));
+  return (OVB.d = { rows, run: last, sn });
+}
+function ovbStats(h, days) {
+  let o = 0, b = 0, n = 0, under = 0, big = null;
+  for (let i = 0; i < Math.min(days, h.price.length); i++) { const p = h.price[i], q = h.beyond_posted?.[i]; if (p == null || !q) continue;
+    o += +p; b += +q; n++; if (h.beyond_min?.[i] && p < h.beyond_min[i]) under++;
+    const g = p / q - 1; if (!big || Math.abs(g) > Math.abs(big.g)) big = { i, g }; }
+  return { o: n ? o / n : null, b: n ? b / n : null, gap: n && b ? o / b - 1 : null, n, under, big };
+}
+function ovbChart(h) {
+  const W = 760, H = 140, N = h.price.length, vals = [...h.price, ...(h.beyond_posted || [])].filter(v => v != null).map(Number);
+  if (!vals.length) return ""; const mx = Math.max(...vals) * 1.05, x = i => 30 + i * (W - 40) / (N - 1), y = v => H - 18 - (H - 30) * v / mx;
+  const path = a => a.map((v, i) => v == null ? "" : `${i && a[i - 1] != null ? "L" : "M"}${x(i).toFixed(1)},${y(+v).toFixed(1)}`).join("");
+  const today = new Date(h.start_date + "T12:00"), ticks = [];
+  for (let i = 0; i < N; i += 30) { const d = new Date(today); d.setDate(d.getDate() + i); ticks.push(`<text x="${x(i)}" y="${H - 3}" font-size="10" fill="var(--muted)">${d.toLocaleString(undefined, { month: "short", day: "numeric" })}</text>`); }
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto" role="img" aria-label="Our price vs Beyond, next ${N} nights">
+    <text x="2" y="12" font-size="10" fill="var(--muted)">${fmt(mx)}</text>${ticks.join("")}
+    <path d="${path(h.beyond_posted || [])}" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <path d="${path(h.price)}" fill="none" stroke="var(--teal2)" stroke-width="2"/></svg>
+    <div class="small muted">— <b style="color:var(--teal2)">our price</b> · - - Beyond posted</div>`;
+}
+function ovbDetail(h) {
+  const st = new Date(h.start_date + "T12:00"), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const tr = h.price.map((p, i) => { const d = new Date(st); d.setDate(d.getDate() + i); const q = h.beyond_posted?.[i], g = p != null && q ? (p / q - 1) * 100 : null, m = h.beyond_min?.[i];
+    return `<tr><td>${d.toLocaleString(undefined, { month: "short", day: "numeric" })} ${wd[d.getDay()]}</td><td><b>${fmt(p)}</b></td><td>${fmt(q)}</td><td>${g == null ? "—" : `<span style="color:var(${g >= 0 ? "--green" : "--red"})">${g >= 0 ? "+" : ""}${Math.round(g)}%</span>`}</td>
+      <td>${h.comp_median?.[i] ? fmt(h.comp_median[i] / PP_BASIS) : "—"}</td><td>${h.comp_n?.[i] ?? "—"}</td><td>${h.comp_fill?.[i] != null ? Math.round(h.comp_fill[i] * 100) + "%" : "—"}</td>
+      <td>${h.min_stay?.[i] ?? "—"}</td><td class="muted">${escH(ovbWhy(h.rule?.[i]))}${m && p != null && p < m ? ` · <span style="color:var(--red)">under Beyond min ${fmt(m)}</span>` : ""}</td></tr>`; }).join("");
+  const n = h.notes || {}, bo = n.booked_offseason_stays;
+  return `<div style="margin:8px 0 14px;padding:10px;border:1px solid var(--line);border-radius:8px"><b>${escH(h.name)}</b> <span class="small muted">· ${escH(h.set)}</span>
+    ${ovbChart(h)}
+    <p class="small muted" style="margin:4px 0">Damage guard ${fmt(n.walk_away)} (${Math.round((n.walk_away_pct || 0) * 100)}% of its ski-season price)${n.never_below ? ` · never below ${fmt(n.never_below)}` : ""} · booked off-season comp stays: ${bo ? `${bo.midweek} midweek, ${bo.weekend} weekend` : "—"} · ${n.below_beyond_min_nights || 0} nights under Beyond's minimum.</p>
+    <div class="wrap" style="max-height:420px;overflow:auto"><table class="small"><tr><th style="text-align:left">Night</th><th>Ours</th><th>Beyond</th><th>Gap</th><th>Comp middle*</th><th>Comps</th><th>Comps booked</th><th>Min stay</th><th style="text-align:left">Why ours</th></tr>${tr}</table></div>
+    <p class="small muted" style="margin:4px 0 0">*Comp middle converted to our Track basis (comp Airbnb nightly ÷ ${PP_BASIS}). ESTIMATE.</p></div>`;
+}
+async function ovbRender() {
+  const el = $("ovbOut"); if (!el || OVB.busy) return; OVB.busy = true;
+  if (!OVB.d) el.innerHTML = `<p class="small muted">Loading our shadow prices…</p>`;
+  try { await ovbLoad(); } finally { OVB.busy = false; }
+  const D = OVB.d; if (!D.rows.length) { el.innerHTML = `<p class="small muted">No shadow prices yet (shadow_price.py runs nightly; run_shadow_price_now.bat runs it now).</p>`; return; }
+  const sets = [...new Set(D.rows.map(r => r.set))].sort();
+  let rows = D.rows.filter(r => (OVB.sid === "*" || r.set === OVB.sid) && (!OVB.q || r.name.toLowerCase().includes(OVB.q.toLowerCase())))
+    .map(r => ({ r, s: ovbStats(r, OVB.win) })).filter(x => x.s.n);
+  rows.sort((a, b) => Math.abs(b.s.gap) - Math.abs(a.s.gap));
+  const all = D.rows.map(r => ovbStats(r, OVB.win)).filter(s => s.n), hi = all.filter(s => s.gap >= .25).length, lo = all.filter(s => s.gap <= -.25).length;
+  const bcap = D.rows.map(r => r.notes?.beyond_captured_at).filter(Boolean).sort().pop();
+  el.innerHTML = `<p class="small" style="margin:0 0 6px">Next ${OVB.win} nights, ${all.length} homes: <b style="color:var(--green)">${hi}</b> where we'd charge 25%+ more than Beyond (money left on the table?) · <b style="color:var(--red)">${lo}</b> where we'd charge 25%+ less (Beyond priced too high to book?). Biggest gaps first. Click a home for every night.</p>
+    <div class="small" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px"><select id="ovbSet"><option value="*">All neighborhoods</option>${sets.map(s => `<option ${s === OVB.sid ? "selected" : ""}>${escH(s)}</option>`).join("")}</select>
+    <input id="ovbQ" placeholder="Find a home (e.g. PL 406)" value="${escH(OVB.q)}" style="width:180px"><select id="ovbWin">${[30, 90, 180].map(w => `<option value="${w}" ${w === OVB.win ? "selected" : ""}>Next ${w} nights</option>`).join("")}</select></div>
+    <div class="wrap"><table class="small"><tr><th style="text-align:left">Home</th><th style="text-align:left">Neighborhood</th><th>Ours (avg)</th><th>Beyond (avg)</th><th>Gap</th><th>Under Beyond min</th><th style="text-align:left">Biggest gap night</th></tr>
+    ${rows.map(({ r, s }) => { const d = s.big ? new Date(new Date(r.start_date + "T12:00").getTime() + s.big.i * 864e5) : null;
+      return `<tr class="ovbRow" data-id="${escH(r.comp_id)}" style="cursor:pointer"><td><b>${escH(r.name)}</b></td><td>${escH(r.set)}</td><td>${fmt(s.o)}</td><td>${fmt(s.b)}</td><td><b style="color:var(${s.gap >= 0 ? "--green" : "--red"})">${s.gap >= 0 ? "+" : ""}${Math.round(s.gap * 100)}%</b></td><td>${s.under || "—"}</td><td>${d ? `${d.toLocaleString(undefined, { month: "short", day: "numeric" })}: ${fmt(r.price[s.big.i])} vs ${fmt(r.beyond_posted[s.big.i])}` : "—"}</td></tr>${OVB.open === r.comp_id ? `<tr><td colspan="7">${ovbDetail(r)}</td></tr>` : ""}`; }).join("")}</table></div>
+    <p class="small muted" style="margin:6px 0 0">Shadow only: nothing here is sent to Beyond or Track. Rules: PRICING-PLAYBOOK (ski season = comp middle, off-season = low end of comps that booked, holidays = top of comps, Thursday halfway, last-minute ladder, damage guard, Upper Main ≥ $250). ESTIMATE.</p>
+    <p class="small muted" style="margin:2px 0 0">Sources: our shadow prices ${escH(D.run.version)} run ${escH(D.run.run_date)} (shadow_prices) · Beyond posted prices, read-only API, captured ${bcap ? escH(bcap.slice(0, 10)) : "—"} (beyond_snapshots) · comp calendars AirROI / KeyData (nightly_snapshots) · comps that booked = our nightly price checks (comp_booked_mat).</p>`;
+  $("ovbSet").onchange = e => { OVB.sid = e.target.value; ovbRender(); };
+  $("ovbWin").onchange = e => { OVB.win = +e.target.value; ovbRender(); };
+  $("ovbQ").oninput = e => { OVB.q = e.target.value; clearTimeout(OVB.t); OVB.t = setTimeout(() => { ovbRender(); const q = $("ovbQ"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); };
+  el.querySelectorAll(".ovbRow").forEach(tr => tr.onclick = () => { OVB.open = OVB.open === tr.dataset.id ? null : tr.dataset.id; ovbRender(); });
 }
 function kolRender() {
   const el = $("kolOut"); if (!el) return; const g = PP.g;
