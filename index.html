@@ -51,6 +51,7 @@ a{color:var(--teal2)}
 #login{max-width:380px;margin:80px auto}input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 button.primary{margin-top:10px;width:100%;padding:10px;border:0;border-radius:8px;background:var(--teal);color:var(--onteal);font:inherit;font-weight:600;cursor:pointer}
 #pulse{display:none}#rater{display:none}#reports{display:none}main.v-reports #reports{display:block}main.v-reports>*:not(#viewnav):not(#reports){display:none!important}.rpsec{border-top:1px solid var(--line);padding:12px 0}.rpsec h3{margin:0 0 4px;font-size:15px}.rpsec h4{margin:12px 0 4px;font-size:14px}.rpsec input[type=date]{width:auto}
+main:not(.v-beyond) #weekly{display:none}main.v-beyond>*:not(#viewnav):not(#weekly){display:none!important}
 main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){display:none!important}
 .rtabs,.rrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.rrow select{width:auto;max-width:100%}
 .rphotos{display:flex;gap:6px;overflow-x:auto;padding:4px 0}.rphotos img{height:110px;border-radius:8px;display:block}.rphotos.big img{height:170px}
@@ -63,6 +64,17 @@ main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){displ
 .homesel{position:relative}.homesel summary{cursor:pointer;list-style:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--ink2)}.homesel summary::-webkit-details-marker{display:none}
 .homeselbox{position:absolute;z-index:20;top:110%;left:0;min-width:240px;max-height:340px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.15);padding:8px}.homeselbox label{display:flex;gap:8px;align-items:center;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:6px}.homeselbox label:hover{background:var(--tealbg)}.homeselbox input{width:auto!important;min-width:0;margin:0;flex:none}.homeselbox label{white-space:nowrap}.homeselbox .allrow{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:6px;font-weight:600}
 .totop{position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--teal);color:var(--onteal);font-size:22px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:opacity .2s;z-index:60}.totop.show{opacity:.92;pointer-events:auto}.totop:hover{opacity:1}
+/* Left side menu like Freshdesk (Brandon 2026-10-20): wide screens get a fixed icon rail; phones keep the row of tabs. */
+#viewnav .tab .ic{margin-right:4px}
+@media (min-width:900px){
+  body{padding-left:92px}
+  #viewnav{position:fixed;left:0;top:0;bottom:0;width:92px;flex-direction:column;flex-wrap:nowrap!important;align-items:stretch!important;gap:6px!important;padding:16px 8px!important;margin:0!important;border-radius:0!important;border:0!important;border-right:1px solid var(--line)!important;box-shadow:none!important;z-index:40;overflow-y:auto;background:var(--card)}
+  #viewnav .tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px;border-radius:14px;border-color:transparent;font-size:11px;line-height:1.2;text-align:center;white-space:normal}
+  #viewnav .tab .ic{font-size:22px;margin:0}
+  #viewnav .tab:hover{background:var(--tealbg)}
+  #viewnav .tab.on{background:var(--tealbg);color:var(--teal2);border-color:var(--teal2);font-weight:600}
+  #viewnav .navnote{display:none}
+}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
 dialog{max-height:90vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -128,12 +140,12 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
 </div>
 
 <main id="app" class="hidden">
-  <div class="card" id="weekly" style="padding:10px 14px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Weekly · Kolleen</b>
+  <div class="card" id="weekly" style="padding:10px 14px"><h2 style="margin:0 0 4px">🤝 Beyond Pricing</h2><p class="small muted" style="margin:0 0 8px">Weekly with Kolleen: Wednesday build the sheet, Thursday 2 PM call, then "Did it land?" checks Track has her changes. Her sheet carries rates and minimum stays only (no comp data).</p><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>This week</b>
     <button class="tab on" id="colleenBtn" title="Builds the clean rate + minimum-stay sheet for every neighborhood (no comp data on it)">Build Kolleen sheet (all neighborhoods)</button>
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
     <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
     <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
-  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk">🏠 Desk</button><button class="tab" data-v="pulse">📈 Market pulse</button><button class="tab" data-v="hotels">🏨 Hotels</button><button class="tab" data-v="rater">⭐ Home Rater</button><button class="tab" data-v="reports">📋 Reports</button><span class="small muted">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
+  <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk" title="Desk: comps, rates and calendars"><span class="ic">🏠</span><span>Desk</span></button><button class="tab" data-v="pulse" title="Market pulse: searches, markets, flights, news, events"><span class="ic">📈</span><span>Market pulse</span></button><button class="tab" data-v="hotels" title="Hotel rates near our homes"><span class="ic">🏨</span><span>Hotels</span></button><button class="tab" data-v="rater" title="Score and rank our homes"><span class="ic">⭐</span><span>Home Rater</span></button><button class="tab" data-v="reports" title="Booked too low, great bookings, Airbnb rank, owner reports"><span class="ic">📋</span><span>Reports</span></button><button class="tab" data-v="beyond" title="Weekly Kolleen sheet, Did it land?, matches to review"><span class="ic">🤝</span><span>Beyond Pricing</span></button><span class="small muted navnote">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
   <div class="card" id="reports"><h2 style="margin:0 0 8px">📋 Reports</h2><p class="small muted" style="margin:0 0 8px">Reports to share with owners or between ourselves. Kolleen-facing downloads carry rates only (no comp data).</p><div id="reportsBody"></div></div>
   <div class="card" id="rater"><h2 style="margin:0 0 8px">⭐ Home Rater</h2><p class="small muted" style="margin:0 0 8px">Score our homes 1–5 and pick which of two homes is nicer. Everyone's scores are combined in Rankings, next to Claude's AI score from the listing photos (ESTIMATE). The pricing engine will use these to price nicer homes higher within the same area.</p><div id="raterBody"></div></div>
   <div class="card" id="pulse"><h2 style="margin:0 0 8px">📈 Market pulse</h2><div id="pulseBody"></div></div>
@@ -1127,7 +1139,7 @@ state.mk = { events: [], weather: [], loaded: false };
 // show rooms (fewer = tighter market). It does NOT show hotels' booked nights.
 // ===== Views: Desk | Market pulse | Hotels (Brandon 2026-10-20) =====
 function setView(v) {
-  const m = $("app"); m.classList.remove("v-pulse", "v-hotels", "v-rater", "v-reports"); if (v !== "desk") m.classList.add("v-" + v);
+  const m = $("app"); m.classList.remove("v-pulse", "v-hotels", "v-rater", "v-reports", "v-beyond"); if (v !== "desk") m.classList.add("v-" + v);
   document.querySelectorAll("#viewnav .tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   if (v === "pulse") loadPulse();
   if (v === "rater") loadRater();
@@ -1315,6 +1327,7 @@ function renderReports() {
     <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×1.58, Airbnb/VRBO ×1.375: our +15% plan and the fees folded into the nightly price). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 5+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
     <div class="rrow"><button class="tab on" id="rpRunBk">Run for all neighborhoods</button><span id="rpBkMsg" class="small muted">${RP.bk ? "Last run " + RP.bk.at.toLocaleTimeString() : "Takes about a minute."}</span></div><div id="rpBkOut">${RP.bk ? bkHtml() : ""}</div></section>
   <section class="rpsec"><h3>🔍 Airbnb search: where our homes show · 📉 comp price drops <span class="small muted">last 7 days (airbnb_search.py, nightly)</span></h3><div id="rpAbOut"></div></section>
+  <section class="rpsec"><h3>🕒 When the data was updated · 📚 Where it comes from</h3><div id="rpSrcOut"></div></section>
   <section class="rpsec"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
     <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a clean page you can print or save as PDF. No other owners' names; comps shown only as averages.</span></div></section>
   <section class="rpsec"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
@@ -1323,7 +1336,44 @@ function renderReports() {
     $("rpHome").innerHTML = (r.data || []).map(c => `<option value="${escH(c.id)}">${escH((c.label || c.id).replace(/\s*\(.*?\)\s*$/, ""))}</option>`).join(""); };
   $("rpSet").onchange = fillHomes; fillHomes();
   $("rpRunBk").onclick = runBookingQuality; $("rpRunHol").onclick = runHoliday; $("rpOwner").onclick = ownerReport;
-  wireRpDownloads(); loadAbRank();
+  wireRpDownloads(); loadAbRank(); loadDataStatus();
+}
+// 2026-10-20 (Brandon): every feed, when it last updated, how often it should, and its source.
+const FEEDS = [ // [name, what it gives us, table, time column, filter [col, val] or null, expected days, source label, source url]
+  ["Airbnb comp prices + calendars", "Comp nightly prices, open/blocked nights (page loads, nightly)", "checks", "captured_at", ["channel", "Airbnb"], 1.5, "Airbnb listing pages (pull.py, ThinkStation)", "https://www.airbnb.com"],
+  ["Airbnb search", "Comp prices, our search rank, price cuts (nightly)", "airbnb_searches", "captured_at", null, 1.5, "SerpApi Airbnb Search API", "https://serpapi.com/airbnb-search-api"],
+  ["VRBO comp prices", "VRBO nightly rates (KeyData)", "checks", "captured_at", ["channel", "VRBO"], 8, "KeyData", "https://www.keydatadashboard.com"],
+  ["Direct-site comp prices", "Other managers' own sites (Tuesdays)", "checks", "captured_at", ["channel", "Direct"], 8, "PCRP, AvantStay, All Seasons, CooperWynn sites", null],
+  ["Our homes (Track)", "Our rates, bookings and stats (read-only)", "comps", "stats_captured_at", null, 1.5, "Track API (read-only)", "https://www.trackhs.com"],
+  ["Hotels", "Park City + Heber hotel rates, 90 nights (Wednesdays)", "hotel_rates", "captured_at", null, 8, "Google Hotels via SerpApi", "https://serpapi.com/google-hotels-api"],
+  ["Flights into SLC", "Cheapest fares from our feeder markets (Mondays)", "flight_prices", "captured_at", null, 8, "Google Flights via SerpApi", "https://serpapi.com/google-flights-api"],
+  ["Events (Ticketmaster)", "Concerts, games and shows near us (nightly)", "market_events", "captured_at", null, 1.5, "Ticketmaster Discovery API", "https://developer.ticketmaster.com"],
+  ["Events (PredictHQ)", "Ranked events, predicted attendance + lodging spend (nightly)", "phq_events", "captured_at", null, 1.5, "PredictHQ Events API", "https://www.predicthq.com"],
+  ["Event demand (PredictHQ)", "Daily lodging demand from events, 365 days (Mondays)", "market_signals", "captured_at", ["source", "predicthq_features"], 8, "PredictHQ Features API", "https://www.predicthq.com"],
+  ["Google searches", "Search interest vs last year (Mondays)", "market_signals", "captured_at", ["source", "google_trends"], 8, "Google Trends via SerpApi", "https://trends.google.com"],
+  ["Stock markets + currencies", "Indexes, AUD/CAD/GBP/MXN (weekdays)", "market_signals", "captured_at", ["source", "google_finance"], 4, "Google Finance via SerpApi", "https://www.google.com/finance"],
+  ["News", "Park City / Deer Valley news (daily)", "market_signals", "captured_at", ["source", "google_news"], 1.5, "Google News via SerpApi", "https://news.google.com"],
+  ["Utah trending searches", "What's spiking in Utah (daily)", "market_signals", "captured_at", ["source", "trending_utah"], 1.5, "Google Trends Trending Now via SerpApi", "https://trends.google.com/trending?geo=US-UT"],
+  ["Drive time", "SLC airport → Park City / Heber (daily)", "market_signals", "captured_at", ["source", "drive_time"], 1.5, "Google Maps via SerpApi", "https://www.google.com/maps"],
+  ["Our Google rank + ads", "Where our site ranks for rental searches (Mondays)", "market_signals", "captured_at", ["source", "google_rank"], 8, "Google Search via SerpApi", "https://www.google.com"],
+  ["Manager reviews", "Google Maps rating + reviews for us and 14 managers (Mondays)", "market_signals", "captured_at", ["source", "manager_reviews"], 8, "Google Maps via SerpApi", "https://www.google.com/maps"],
+  ["Google vacation rentals", "Park City rentals shown on Google, 2–6BR (Wednesdays)", "market_signals", "captured_at", ["source", "google_vr"], 8, "Google Hotels (vacation rentals) via SerpApi", "https://www.google.com/travel"],
+  ["Short-term rental market", "Utah occupancy + ADR (Sundays)", "market_signals", "captured_at", ["source", "pricelabs"], 8, "PriceLabs (weekly pull)", "https://app.pricelabs.co"],
+  ["AI home scores", "Claude's score from listing photos + Track amenities", "home_ai", "scored_at", null, 60, "Airbnb listing photos + Track amenities", null],
+  ["Staff home scores", "Home Rater scores from our team", "home_ratings", "created_at", null, 30, "Home Rater (Desk)", null]];
+async function loadDataStatus() {
+  const el = $("rpSrcOut"); if (!el) return;
+  if (!RP.src) {
+    el.innerHTML = `<p class="small muted">Checking every feed…</p>`;
+    RP.src = await Promise.all(FEEDS.map(async f => { let q = sb.from(f[2]).select(f[3]).not(f[3], "is", null); if (f[4]) q = q.eq(f[4][0], f[4][1]);
+      const r = await q.order(f[3], { ascending: false }).limit(1); return { f, at: r.data?.[0]?.[f[3]] || null, err: r.error?.message }; }));
+  }
+  const now = Date.now(), ago = t => { const h = (now - new Date(t)) / 36e5; return h < 1 ? "under an hour ago" : h < 48 ? Math.round(h) + " hours ago" : Math.round(h / 24) + " days ago"; };
+  el.innerHTML = `<div class="wrap"><table class="small"><tr><th style="text-align:left">Data</th><th style="text-align:left">Last updated</th><th style="text-align:left">Where it comes from</th></tr>${RP.src.map(({ f, at, err }) => {
+    const late = at && (now - new Date(at)) / 864e5 > f[5], col = !at ? "--muted" : late ? "--red" : "--green";
+    return `<tr><td><b>${escH(f[0])}</b><div class="muted">${escH(f[1])}</div></td><td><span style="color:var(${col})">●</span> ${at ? `${new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} <span class="muted">· ${ago(at)}</span>${late ? ` <b style="color:var(--red)">late</b>` : ""}` : `<span class="muted">${err ? "can't read" : "no data yet"}</span>`}</td><td>${f[7] ? `<a href="${escH(f[7])}" target="_blank" rel="noopener">${escH(f[6])}</a>` : escH(f[6])}</td></tr>`; }).join("")}</table></div>
+  <p class="small muted" style="margin:4px 0 0">● green = on schedule · red = later than its normal schedule (check logs\\pull.log on the ThinkStation) · grey = not started yet. Every price row on the Desk also keeps its own source link and capture time. <button class="tab" id="rpSrcRe" style="padding:2px 10px">Refresh</button></p>`;
+  $("rpSrcRe").onclick = () => { RP.src = null; loadDataStatus(); };
 }
 // 2026-10-20: Airbnb search rank of our homes + comp price drops (from airbnb_searches, SerpApi Airbnb search).
 function abSearchUrl(s) { const [n, e, so, w] = (s.bounds || "").split(",");
