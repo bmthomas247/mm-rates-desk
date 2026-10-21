@@ -1467,7 +1467,7 @@ async function loadRater(force) {
   RT.homes = (c.data || []).map(h => ({ ...h, name: (h.label || h.id).replace(/\s*\(.*?\)\s*$/, ""), set: setName(h.set_id) })).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   RT.ai = Object.fromEntries((ai.data || []).map(a => [a.comp_id, a])); RT.ratings = rt.data || []; RT.duels = du.data || [];
   RT.err = c.error?.message || ai.error?.message || rt.error?.message || du.error?.message;
-  if (!RT.hood) RT.hood = RT.homes[0]?.set_id;
+  if (!RT.hood) RT.hood = "*"; // 2026-10-20 (Brandon): rank homes more than neighborhoods -> default = all homes, least-scored first
   renderRater();
 }
 function rSub(s) { RT.sub = s; renderRater(); }
@@ -1491,9 +1491,9 @@ function renderRater() {
   let body = "";
   if (RT.err) body += `<p class="up small">${escH(RT.err)}</p>`;
   if (RT.sub === "rate") {
-    const list = T.filter(h => h.set_id === RT.hood); if (RT.idx >= list.length) RT.idx = 0; const h = list[RT.idx];
+    const list = raterList(); if (RT.idx >= list.length) RT.idx = 0; const h = list[RT.idx];
     const mine = h ? [...RT.ratings].reverse().find(r => r.comp_id === h.id && r.rater === state.email) : null;
-    body += `<div class="rrow"><select id="rHood">${sets.map(([id, n]) => `<option value="${escH(id)}"${id === RT.hood ? " selected" : ""}>${escH(n)}</option>`).join("")}</select>
+    body += `<div class="rrow"><select id="rHood"><option value="*"${RT.hood === "*" ? " selected" : ""}>All homes (fewest scores first)</option>${sets.map(([id, n]) => `<option value="${escH(id)}"${id === RT.hood ? " selected" : ""}>${escH(n)}</option>`).join("")}</select>
       <select id="rHome">${list.map((x, i) => `<option value="${i}"${i === RT.idx ? " selected" : ""}>${escH(x.name)}${RT.ratings.some(r => r.comp_id === x.id && r.rater === state.email) ? " ✓" : ""}</option>`).join("")}</select>
       <select id="rRole"><option value="">Your job</option>${["Housekeeping", "Inspections", "Maintenance", "Guest services", "Owner relations", "Management", "Other"].map(r => `<option${r === (RT.role || "") ? " selected" : ""}>${r}</option>`).join("")}</select></div>`;
     if (h) {
@@ -1508,6 +1508,14 @@ function renderRater() {
   } else body += rankHtml();
   $("raterBody").innerHTML = tabs + body; wireRater();
 }
+// All-homes queue: homes with the fewest staff scores first (fixed when the tab opens so "next" doesn't jump around).
+function raterList() {
+  const T = RT.homes || [];
+  if (RT.hood !== "*") return T.filter(h => h.set_id === RT.hood);
+  if (!RT.allOrder || RT.allOrder.length !== T.length) { const n = {}; for (const r of RT.ratings) n[r.comp_id] = (n[r.comp_id] || 0) + 1;
+    RT.allOrder = [...T].sort((a, b) => (n[a.id] || 0) - (n[b.id] || 0) || (a.set || "").localeCompare(b.set || "") || (a.name || "").localeCompare(b.name || "", undefined, { numeric: true })).map(h => h.id); }
+  const by = new Map(T.map(h => [h.id, h])); return RT.allOrder.map(id => by.get(id)).filter(Boolean);
+}
 function pickPair(base) {
   const T = RT.homes || []; if (T.length < 2) return null; const a = base || T[Math.floor(Math.random() * T.length)];
   let c = T.filter(b => b.id !== a.id && (!RT.sameBr || (b.bedrooms || 0) === (a.bedrooms || 0)));
@@ -1515,17 +1523,19 @@ function pickPair(base) {
   return c.length ? [a, c[Math.floor(Math.random() * c.length)]] : null;
 }
 function duelHtml([a, b], ctx) { const card = (h, s) => `<button class="rpick" data-side="${s}" data-ctx="${ctx}"><span class="small muted">${escH(h.set)}</span><b>${escH(h.name)}</b>${(RT.ai[h.id]?.photos || []).slice(0, 1).map(p => `<img loading="lazy" src="${escH(photoUrl(p, RT.ai[h.id].airbnb_id))}" alt="">`).join("")}<span class="small muted">Tap if this one is nicer</span></button>`;
-  return `<div class="rduel">${card(a, 1)}${card(b, 0)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">About the same</button><button class="tab" data-skip="${ctx}">Don't know</button></div>`; }
+  return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">About the same</button><button class="tab" data-skip="${ctx}">Don't know</button></div>`; }
 function rankHtml() {
   const S = staffAgg(), { E, G } = eloAgg(), f = v => v == null ? "—" : (+v).toFixed(1);
   const rows = (RT.homes || []).map(h => { const s = S[h.id], a = RT.ai[h.id]; const staff = s?.avg.overall ?? null;
     return { h, staff, n: s?.n || 0, ai: a?.overall ?? null, ins: s?.avg.inside ?? null, aiIns: a?.inside ?? null, guest: a?.rating ? +a.rating : null, rev: a?.reviews || 0, elo: G[h.id] ? E[h.id] : null, games: G[h.id] || 0,
       blend: staff != null ? (s.n >= 2 ? staff : (staff + (a?.overall ?? staff)) / 2) : a?.overall ?? null }; });
   const k = RT.sortK || "blend"; rows.sort((x, y) => (y[k] ?? -1) - (x[k] ?? -1));
+  const inSet = {}; for (const r of [...rows].sort((x, y) => (y.blend ?? -1) - (x.blend ?? -1))) { const g = (inSet[r.h.set_id] ||= []); g.push(r); r.setPos = g.length; }
+  rows.forEach(r => r.setN = inSet[r.h.set_id].length);
   const th = (key, t) => `<th data-sk="${key}" style="cursor:pointer">${t}${k === key ? " ▼" : ""}</th>`;
-  return `<p class="small muted">Score = staff overall when 2+ people scored the home; with 1 person it's half staff, half AI; with none it's the AI score (ESTIMATE). Head-to-head starts at 1500. Click a column to sort.</p>
-    <div class="wrap"><table><tr><th>#</th><th>Home</th>${th("blend", "Score")}${th("staff", "Staff overall")}${th("ai", "AI overall")}${th("ins", "Staff inside")}${th("aiIns", "AI inside")}${th("guest", "Guest ★")}${th("elo", "Head-to-head")}</tr>
-    ${rows.map((r, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(r.h.name)}<div class="small muted">${escH(r.h.set)}</div></td><td><b>${f(r.blend)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="small muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${f(r.ins)}</td><td>${f(r.aiIns)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="small muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo) + ` <span class="small muted">(${r.games})</span>`}</td></tr>`).join("")}</table></div>
+  return `<p class="small"><b>Every home ranked against every other home, across all neighborhoods.</b> "In its neighborhood" = where it sits among our homes in the same neighborhood (the better ones should price higher).</p><p class="small muted">Score = staff overall when 2+ people scored the home; with 1 person it's half staff, half AI; with none it's the AI score (ESTIMATE). Head-to-head starts at 1500. Click a column to sort.</p>
+    <div class="wrap"><table><tr><th>#</th><th>Home</th><th>In its neighborhood</th>${th("blend", "Score")}${th("staff", "Staff overall")}${th("ai", "AI overall")}${th("ins", "Staff inside")}${th("aiIns", "AI inside")}${th("guest", "Guest ★")}${th("elo", "Head-to-head")}</tr>
+    ${rows.map((r, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(r.h.name)}<div class="small muted">${escH(r.h.set)}</div></td><td class="small">${r.setN > 1 ? `#${r.setPos} of ${r.setN}` : '<span class="muted">only one</span>'}</td><td><b>${f(r.blend)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="small muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${f(r.ins)}</td><td>${f(r.aiIns)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="small muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo) + ` <span class="small muted">(${r.games})</span>`}</td></tr>`).join("")}</table></div>
     <p class="small muted">Sources: staff scores and matchups saved on the Desk; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
 }
 async function saveDuel(a, b, w) { const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w }); return error; }
@@ -1535,8 +1545,8 @@ function wireRater() {
   B.querySelector("#rHome") && (B.querySelector("#rHome").onchange = e => { RT.idx = +e.target.value; renderRater(); });
   B.querySelector("#rRole") && (B.querySelector("#rRole").onchange = e => { RT.role = e.target.value; });
   B.querySelectorAll(".rchips").forEach(row => row.onclick = e => { const c = e.target.closest(".rchip"); if (!c) return; const was = c.classList.contains("on"); row.querySelectorAll(".rchip").forEach(x => x.classList.remove("on")); if (!was) c.classList.add("on"); });
-  const list = (RT.homes || []).filter(h => h.set_id === RT.hood), h = list[RT.idx];
-  if (B.querySelector("#rNext")) B.querySelector("#rNext").onclick = () => { if (RT.idx < list.length - 1) RT.idx++; else { const ids = [...new Set(RT.homes.map(x => x.set_id))]; RT.hood = ids[(ids.indexOf(RT.hood) + 1) % ids.length]; RT.idx = 0; } renderRater(); window.scrollTo(0, 0); };
+  const list = raterList(), h = list[RT.idx];
+  if (B.querySelector("#rNext")) B.querySelector("#rNext").onclick = () => { if (RT.idx < list.length - 1) RT.idx++; else if (RT.hood === "*") RT.idx = 0; else { const ids = [...new Set(RT.homes.map(x => x.set_id))]; RT.hood = ids[(ids.indexOf(RT.hood) + 1) % ids.length]; RT.idx = 0; } renderRater(); window.scrollTo(0, 0); };
   if (B.querySelector("#rSave")) B.querySelector("#rSave").onclick = async () => {
     const row = { comp_id: h.id, role: RT.role || null }; let any = false;
     B.querySelectorAll(".rchips").forEach(r => { const on = r.querySelector(".rchip.on"); const v = on ? +on.dataset.v : 0; row[r.dataset.k] = v >= 1 ? v : null; if (v >= 1) any = true; });
