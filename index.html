@@ -1417,7 +1417,7 @@ async function ppGather(force) {
           if (off < 0 || off >= (n.avail || "").length) continue; (by[n.comp_id] ||= {})[n.channel] = { open: n.avail[off] === "1", rate: n.rates?.[off] }; }
         const v = [], all = Object.values(by).map(c => c.Airbnb || c.VRBO).filter(Boolean); let closed = 0;
         for (const x of all) { if (!x.open) closed++; else if (x.rate != null) v.push(+x.rate); }
-        D[k] = { adr: v.length >= 3 ? rAvg(v.filter(x => x <= 2.5 * quant(v, .5))) : null, fill: all.length >= 3 ? closed / all.length : null, n: all.length }; } }); }
+        D[k] = { adr: v.length >= 5 ? rAvg(v.filter(x => x <= 2.5 * quant(v, .5))) : null, fill: all.length >= 3 ? closed / all.length : null, n: all.length }; } }); }
   const homes = (oc.data || []).map(h => ({ ...h, name: (h.label || h.id).replace(/\s*\(.*?\)\s*$/, ""), set: setName[h.set_id] || h.set_id }))
     .filter(h => setName[h.set_id]).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   say("");
