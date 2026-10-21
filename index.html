@@ -1143,7 +1143,8 @@ async function loadPulse() {
   if (state.pulse) return renderPulse();
   $("pulseBody").innerHTML = `<p class="small muted">Loading market pulse…</p>`;
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
-  const [rt, rm, re] = await Promise.all([latestRun("google_trends"), latestRun("google_finance_markets"), latestRun("google_events")]);
+  const [rt, rm, re, rg, rv, rh, rn] = await Promise.all([latestRun("google_trends"), latestRun("google_finance_markets"), latestRun("google_events"),
+    latestRun("google_rank"), latestRun("manager_reviews"), latestRun("google_vr"), latestRun("trending_utah")]);
   const ms = (src, run) => run == null ? Promise.resolve({ data: [] }) : allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", src).eq("run_id", run).order("id"));
   const [tr, mk, fx, nw, ev, fl, pl] = await Promise.all([
     ms("google_trends", rt), ms("google_finance_markets", rm),
@@ -1152,7 +1153,11 @@ async function loadPulse() {
     ms("google_events", re),
     allRows(() => sb.from("flight_prices").select("*", { count: "exact" }).gte("captured_at", addD(today, -8)).order("captured_at").order("id")),
     allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "pricelabs").gte("period_date", addD(today, -500)).order("period_date").order("id"))]);
-  state.pulse = { today, trends: tr.data || [], markets: mk.data || [], fx: fx.data || [], news: nw.data || [], events: ev.data || [], flights: fl.data || [], pl: pl.data || [] };
+  // 2026-10-20 (SerpApi Production, market_extra.py): Google rank of our site, manager reviews, Google vacation rentals, Utah trending, drive times.
+  const [gr, mr, gv, tu, dr] = await Promise.all([ms("google_rank", rg), ms("manager_reviews", rv), ms("google_vr", rh), ms("trending_utah", rn),
+    allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "drive_time").gte("period_date", addD(today, -14)).order("captured_at").order("id"))]);
+  state.pulse = { today, trends: tr.data || [], markets: mk.data || [], fx: fx.data || [], news: nw.data || [], events: ev.data || [], flights: fl.data || [], pl: pl.data || [],
+    grank: gr.data || [], mrev: mr.data || [], gvr: gv.data || [], trend: tu.data || [], drive: dr.data || [] };
   renderPulse();
 }
 const upDn = (p, digits = 1) => p == null || isNaN(p) ? `<span class="muted">—</span>` : `<b style="color:var(${p >= 0 ? "--green" : "--red"})">${p >= 0 ? "▲" : "▼"} ${Math.abs(p).toFixed(digits)}%</b>`;
@@ -1228,6 +1233,39 @@ function renderPulse() {
     h += `<tr><td>ADR</td>${months.map(m => { const r = adr.find(x => x.period_date === m); return `<td style="text-align:center">${r ? fmt(r.value) : "—"}</td>`; }).join("")}</tr></table></div>`;
     out.push(`<h3>🏘️ Short-term rental market (PriceLabs)</h3>${h}${srcLine("PriceLabs STR index (weekly Sunday pull)", "https://app.pricelabs.co")}`);
   }
+  // --- Drive time SLC -> Park City / Heber (daily) ---
+  if (P.drive.length) {
+    const by = {}; for (const r of P.drive) (by[r.series] ||= []).push(r);
+    const h = Object.entries(by).map(([k, rows]) => { const l = rows[rows.length - 1], v = rows.map(r => r.value == null ? null : +r.value).filter(x => x != null), md = v.length ? [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)] : null, slow = md && l.value != null && +l.value > md * 1.25;
+      return `<div class="small">${slow ? "🚩 " : ""}<b>${escH(k)}</b>: <a href="${escH(l.url)}" target="_blank" rel="noopener">${escH(l.label || (l.value != null ? Math.round(l.value) + " min" : "—"))}</a>${l.extra?.typical ? ` <span class="muted">(typical ${escH(l.extra.typical)})</span>` : ""} <span class="muted">· checked ${escH((l.extra?.checked_at || "").replace("T", " ").slice(0, 16))}</span> ${v.length > 1 ? spark(v, null, 110, 22) : ""}${slow ? ` <b style="color:var(--red)">25%+ slower than usual</b>` : ""}</div>`; }).join("");
+    out.push(`<h3>🚗 Drive time from the SLC airport</h3>${h}<p class="small muted" style="margin:4px 0 0">Storms and I-80 / US-40 closures hit drive-up weekends and cause cancellations. Checked once a night.</p>${srcLine("Google Maps directions via SerpApi (click a time)", null)}`);
+  }
+  // --- Trending in Utah (daily) ---
+  if (P.trend.length) {
+    const flag = /snow|storm|ski|resort|park city|deer valley|canyons|sundance|i-80|avalanche|olympic|festival|concert|jazz|utes|byu|mammoth|real salt lake/i;
+    out.push(`<h3>🔥 Trending in Utah searches <span class="small muted">· last 24 hours · ${escH(P.trend[0].period_date || "")}</span></h3><div class="small" style="display:flex;flex-wrap:wrap;gap:6px">${P.trend.slice(0, 25).map(t => `<span class="pill" title="${escH((t.extra?.categories || []).join(", "))}">${flag.test(t.label + " " + (t.extra?.breakdown || []).join(" ")) ? "🚩 " : ""}${escH(t.label)}${t.value ? ` · ${(+t.value).toLocaleString()}` : ""}</span>`).join("")}</div><p class="small muted" style="margin:4px 0 0">🚩 = ski, snow, resort, big events or games.</p>${srcLine("Google Trends · Trending now (Utah) via SerpApi", P.trend[0].url)}`);
+  }
+  // --- Google: where our site ranks + who runs ads (Mondays) ---
+  if (P.grank.length) {
+    let h = `<div class="wrap"><table class="small"><tr><th style="text-align:left">Google search (from Park City)</th><th>Our site</th><th style="text-align:left">Ads shown</th><th style="text-align:left">Top 5 results</th></tr>`;
+    for (const r of P.grank) h += `<tr><td><a href="${escH(r.url)}" target="_blank" rel="noopener">${escH(r.series)}</a></td><td style="text-align:center">${r.value != null ? `<b style="color:var(${+r.value <= 3 ? "--green" : +r.value <= 6 ? "--ink2" : "--red"})">#${+r.value}</b>` : `<b style="color:var(--red)">not on page 1</b>`}</td><td>${escH([...new Set((r.extra?.ads || []).map(a => a.site).filter(Boolean))].join(", ") || "none")}</td><td class="muted">${escH((r.extra?.top10 || []).slice(0, 5).join(", "))}</td></tr>`;
+    out.push(`<h3>🌐 Google: our direct site (vacationrentalsparkcity.com) <span class="small muted">· ${escH(P.grank[0].period_date || "")}</span></h3>${h}</table></div>${srcLine("Google Search via SerpApi (click a search)", null)}`);
+  }
+  // --- Manager reviews on Google Maps (Mondays) ---
+  if (P.mrev.length) {
+    const rows = [...P.mrev].sort((a, b) => (+b.extra?.reviews || 0) - (+a.extra?.reviews || 0));
+    let h = `<div class="wrap"><table class="small"><tr><th style="text-align:left">Manager (Google Maps)</th><th>Rating</th><th>Reviews</th></tr>`;
+    for (const r of rows) h += `<tr class="${/moose/i.test(r.series) ? "ourrow" : ""}"><td><a href="${escH(r.url)}" target="_blank" rel="noopener">${escH(r.label || r.series)}</a></td><td style="text-align:center">${r.value != null ? (+r.value).toFixed(1) + " ★" : "—"}</td><td style="text-align:center">${r.extra?.reviews != null ? (+r.extra.reviews).toLocaleString() : "—"}</td></tr>`;
+    out.push(`<h3>⭐ Property managers on Google Maps <span class="small muted">· ${escH(P.mrev[0].period_date || "")}</span></h3>${h}</table></div><p class="small muted" style="margin:4px 0 0">First Google Maps result for each name; check the link if a name matched the wrong place.</p>${srcLine("Google Maps via SerpApi (click a name)", null)}`);
+  }
+  // --- Google vacation rentals for Park City (Wednesdays) ---
+  if (P.gvr.length) {
+    const stays = [...new Set(P.gvr.map(r => r.series.split(" | ")[1]))];
+    let h = `<div class="wrap"><table class="small"><tr><th style="text-align:left">Bedrooms</th>${stays.map(s => `<th>${escH(s.replace("->", " → "))}</th>`).join("")}</tr>`;
+    for (const b of [2, 3, 4, 5, 6]) h += `<tr><td>${b}+ BR</td>${stays.map(s => { const r = P.gvr.find(x => x.series === `Park City ${b}BR+ | ${s}`); return `<td style="text-align:center">${r && r.value != null ? `<a href="${escH(r.url)}" target="_blank" rel="noopener" title="${escH(r.label || "")}">${fmt(r.value)}</a><br><span class="muted">${r.extra?.listings ?? ""} shown</span>` : "—"}</td>`; }).join("")}</tr>`;
+    const sites = {}; for (const r of P.gvr) for (const [k, v] of Object.entries(r.extra?.sites || {})) sites[k] = (sites[k] || 0) + v;
+    out.push(`<h3>🏡 Google vacation rentals, Park City <span class="small muted">· median nightly price shown on Google</span></h3>${h}</table></div><p class="small muted" style="margin:4px 0 0">Sites Google sends bookers to: ${escH(Object.entries(sites).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} (${v})`).join(", ") || "—")}.</p>${srcLine("Google Hotels vacation rentals via SerpApi (click a price)", null)}`);
+  }
   // --- News by area, next to our neighborhoods ---
   const seen = new Set(), news = P.news.filter(n => { const k = (n.label || "").toLowerCase().slice(0, 80); if (seen.has(k)) return false; seen.add(k); return true; });
   const ours = c => [...new Set((state.sets || []).filter(s => countyOf(s.name, s) === c).map(s => codeOf(s.name) || s.name.split(/\s+\d/)[0]))].join(", ");
@@ -1253,8 +1291,9 @@ function renderReports() {
   const sets = (state.sets || []).filter(s => s.active !== false);
   $("reportsBody").innerHTML = `
   <section class="rpsec"><h3>🟡 Booked too low · 🟢 Great bookings <span class="small muted">all our homes, upcoming guest stays (next 180 days)</span></h3>
-    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×1.58, Airbnb/VRBO ×1.375: our +15% plan and the fees folded into the nightly price). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 3+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
+    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×1.58, Airbnb/VRBO ×1.375: our +15% plan and the fees folded into the nightly price). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 5+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
     <div class="rrow"><button class="tab on" id="rpRunBk">Run for all neighborhoods</button><span id="rpBkMsg" class="small muted">${RP.bk ? "Last run " + RP.bk.at.toLocaleTimeString() : "Takes about a minute."}</span></div><div id="rpBkOut">${RP.bk ? bkHtml() : ""}</div></section>
+  <section class="rpsec"><h3>🔍 Airbnb search: where our homes show · 📉 comp price drops <span class="small muted">last 7 days (airbnb_search.py, nightly)</span></h3><div id="rpAbOut"></div></section>
   <section class="rpsec"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
     <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a clean page you can print or save as PDF. No other owners' names; comps shown only as averages.</span></div></section>
   <section class="rpsec"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
@@ -1263,7 +1302,41 @@ function renderReports() {
     $("rpHome").innerHTML = (r.data || []).map(c => `<option value="${escH(c.id)}">${escH((c.label || c.id).replace(/\s*\(.*?\)\s*$/, ""))}</option>`).join(""); };
   $("rpSet").onchange = fillHomes; fillHomes();
   $("rpRunBk").onclick = runBookingQuality; $("rpRunHol").onclick = runHoliday; $("rpOwner").onclick = ownerReport;
-  wireRpDownloads();
+  wireRpDownloads(); loadAbRank();
+}
+// 2026-10-20: Airbnb search rank of our homes + comp price drops (from airbnb_searches, SerpApi Airbnb search).
+function abSearchUrl(s) { const [n, e, so, w] = (s.bounds || "").split(",");
+  return `https://www.airbnb.com/s/homes?ne_lat=${n}&ne_lng=${e}&sw_lat=${so}&sw_lng=${w}&search_by_map=true&checkin=${s.check_in}&checkout=${s.check_out}&adults=${s.adults || 2}&room_types%5B%5D=Entire%20home%2Fapt${s.min_bedrooms ? "&min_bedrooms=" + s.min_bedrooms : ""}`; }
+async function loadAbRank() {
+  const el = $("rpAbOut"); if (!el) return;
+  if (!RP.ab) {
+    el.innerHTML = `<p class="small muted">Loading…</p>`;
+    const r = await allRows(() => sb.from("airbnb_searches").select("*", { count: "exact" }).gte("captured_at", addD(iso(new Date()), -7)).order("captured_at", { ascending: false }).order("id"));
+    const rows = r.data || [], ids = [...new Set(rows.flatMap(s => [...Object.keys(s.ours || {}), ...(s.drops || []).map(d => d.comp_id)]))], lab = {};
+    for (let i = 0; i < ids.length; i += 150) { const c = await sb.from("comps").select("id,label,set_id").in("id", ids.slice(i, i + 150)); (c.data || []).forEach(x => lab[x.id] = x); }
+    RP.ab = { rows, lab, err: r.error?.message };
+  }
+  el.innerHTML = abHtml();
+}
+function abHtml() {
+  const { rows, lab, err } = RP.ab; if (err) return `<p class="small muted">Couldn't load: ${escH(err)}</p>`;
+  if (!rows.length) return `<p class="small muted">No Airbnb searches yet. The first ones run tonight before the nightly pull (or run run_full_read_now.bat).</p>`;
+  const nm = id => escH(((lab[id]?.label) || id).replace(/\s*\(.*?\)\s*$/, ""));
+  const H = {};
+  for (const s of rows) for (const [id, o] of Object.entries(s.ours || {})) { const h = (H[id] ||= { n: 0, shown: 0, ranks: [], of: [], miss: [], box: s.box_name, last: null });
+    h.n++; if (o.rank) { h.shown++; h.ranks.push(o.rank); h.of.push(o.of); if (!h.last) h.last = { s, o }; } else h.miss.push(s); }
+  const homes = Object.entries(H).map(([id, h]) => ({ id, ...h, avg: h.ranks.length ? rAvg(h.ranks) : null, ofAvg: h.of.length ? rAvg(h.of) : null }))
+    .sort((a, b) => (a.shown / a.n) - (b.shown / b.n) || (b.avg ?? 999) - (a.avg ?? 999));
+  const listings = rows.reduce((t, s) => t + (s.listings || 0), 0), lowered = rows.reduce((t, s) => t + (s.lowered || 0), 0);
+  let h = `<div class="tiles"><div class="tile"><span>Searches</span><b>${rows.length}</b><span>${new Set(rows.map(s => s.box_name)).size} neighborhoods</span></div><div class="tile"><span>Our homes seen</span><b>${homes.filter(x => x.shown).length} of ${homes.length}</b></div><div class="tile"><span>Hosts who "recently lowered the price"</span><b>${listings ? Math.round(lowered / listings * 100) + "%" : "—"}</b><span>of listings shown</span></div></div>`;
+  h += `<div class="wrap"><table class="small"><tr><th style="text-align:left">Our home</th><th>Searches</th><th>Shown</th><th>Avg spot</th><th>Best</th><th style="text-align:left">Not shown for (first 3)</th></tr>`;
+  for (const x of homes) { const pct = x.shown / x.n, bad = x.avg != null && x.ofAvg && x.avg > 36;
+    h += `<tr><td>${nm(x.id)}</td><td style="text-align:center">${x.n}</td><td style="text-align:center"><b style="color:var(${pct >= 0.7 ? "--green" : pct >= 0.4 ? "--ink2" : "--red"})">${Math.round(pct * 100)}%</b></td><td style="text-align:center">${x.avg != null ? `${bad ? "🔴 " : ""}#${Math.round(x.avg)} <span class="muted">of ~${Math.round(x.ofAvg)}</span>` : "—"}</td><td style="text-align:center">${x.ranks.length ? "#" + Math.min(...x.ranks) : "—"}</td><td>${x.miss.slice(0, 3).map(s => `<a href="${escH(abSearchUrl(s))}" target="_blank" rel="noopener">${escH(s.check_in.slice(5))}→${escH(s.check_out.slice(5))}</a>`).join(", ") || '<span class="muted">—</span>'}</td></tr>`; }
+  h += `</table></div><p class="small muted" style="margin:4px 0 0">Spot = where Airbnb lists the home in a map search of its neighborhood (2 adults, entire homes, bedrooms ≥ ours − 1); 18 per page, so past #36 = page 3+. 🔴 = usually past page 2: price isn't the only problem (photos, reviews, title). "Not shown" can also mean booked, blocked or a minimum stay, so check the calendar first. Click a date to open the same Airbnb search.</p>`;
+  const drops = rows.flatMap(s => (s.drops || []).map(d => ({ ...d, s }))).sort((a, b) => (a.now / a.was) - (b.now / b.was)).slice(0, 40);
+  h += `<h4 style="margin:14px 0 4px">📉 Comps that cut their price 10%+ for the same stay</h4>`;
+  h += drops.length ? `<div class="wrap"><table class="small"><tr><th style="text-align:left">Comp</th><th>Stay</th><th>Was</th><th>Now</th><th>Cut</th></tr>${drops.map(d => `<tr><td>${nm(d.comp_id)}</td><td style="text-align:center">${escH(d.s.check_in.slice(5))}→${escH(d.s.check_out.slice(5))}</td><td style="text-align:center">${fmt(d.was)}</td><td style="text-align:center"><a href="${escH(d.url)}" target="_blank" rel="noopener">${fmt(d.now)}</a></td><td style="text-align:center"><b style="color:var(--red)">−${Math.round((1 - d.now / d.was) * 100)}%</b></td></tr>`).join("")}</table></div><p class="small muted" style="margin:4px 0 0">Stay totals before tax. "Was" = the last price we had on file for that stay. Lots of cuts in one neighborhood = demand is soft for those dates; hold or follow carefully.</p>` : `<p class="small muted">No 10%+ cuts found yet.</p>`;
+  return h + srcLine("Airbnb search via SerpApi; each link opens the listing or the same Airbnb search", null);
 }
 function bookingQualityForSet() { // uses the loaded set (state.*)
   const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), end = addD(today, 180), out = [];
@@ -1276,7 +1349,7 @@ function bookingQualityForSet() { // uses the loaded set (state.*)
     if (b.kind !== "guest" || b.status === "Cancelled" || !label.has(b.comp_id) || !b.nights || !b.gross_rent || b.departure <= today || b.arrival > end) continue;
     const ks = []; for (let k = b.arrival < today ? today : b.arrival; k < b.departure; k = addD(k, 1)) ks.push(k);
     if (b.nights >= 28) continue; // monthly / long stays are a different product
-    const per = ks.map(k => { let v = nightRates(k); const md = quant(v, .5); v = v.filter(x => x <= 2.5 * md); if (v.length < 5) return null; const peak = !!peakOf(k); // 2026-10-20: 5+ priced comps per night (3 let thin sets like White Pine show fake gaps) return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
+    const per = ks.map(k => { let v = nightRates(k); const md = quant(v, .5); v = v.filter(x => x <= 2.5 * md); if (v.length < 5) return null; /* 2026-10-20: 5+ priced comps per night (3 let thin sets like White Pine show fake gaps) */ const peak = !!peakOf(k); return { peak, bench: peak ? quant(v, .75) : rAvg(v) }; }).filter(Boolean);
     if (per.length < ks.length / 2) continue;
     // Same basis as the comps' Airbnb nightly price: our rent + our +15% channel plan + fees folded into the nightly price
     // (Track fee setup, 2026-10-13: Direct rent x1.58; Airbnb/VRBO bookings already carry the +15% plan -> x1.375). ESTIMATE.
