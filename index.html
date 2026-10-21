@@ -327,6 +327,8 @@ const NB = [
 const nbOf = name => NB.find(([re]) => re.test(name));
 const countyOf = (name, set) => (set && set.county) || (nbOf(name) || [])[1] || "Other";
 const codeOf = name => (nbOf(name) || [])[2] || "";
+// Full house code (Brandon 2026-10-21): "406" -> "PL 406" so a home is never just a number. Labels that already start with a word stay as they are.
+const houseName = (label, setName) => { const n = String(label || "").replace(/\s*\(.*?\)\s*$/, "").trim(), c = codeOf(setName || ""); return c && /^\d/.test(n) ? `${c} ${n}` : n; };
 function filterSets() {
   const q = $("setq").value.trim().toLowerCase(); let n = 0;
   $("tabs").querySelectorAll("details.county").forEach(d => {
@@ -412,7 +414,7 @@ function applyHomeSel() {
 function renderHomeSel() {
   const lbl = $("pickedLbl"), box = $("homeSel"); if (!state.set || !state._all) { lbl.classList.add("hidden"); box.classList.add("hidden"); return; }
   lbl.textContent = "Selected: " + state.set.name; lbl.classList.remove("hidden");
-  const ours = state._all.comps.filter(c => c.tier === "Ours").map(c => ({ id: c.id, name: (c.label || c.id).replace(/\s*\(.*?\)\s*$/, "") })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const ours = state._all.comps.filter(c => c.tier === "Ours").map(c => ({ id: c.id, name: houseName(c.label || c.id, state.set?.name) })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   if (!ours.length) { box.classList.add("hidden"); return; } box.classList.remove("hidden");
   const on = id => !state.homeSel || state.homeSel.has(id), nOn = ours.filter(h => on(h.id)).length;
   $("homeSelSum").textContent = nOn === ours.length ? `Our homes: all ${ours.length} ▾` : `Our homes: ${nOn} of ${ours.length} ▾`;
@@ -1346,7 +1348,7 @@ function renderReports() {
   <section class="rpsec" data-rp="hol"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
     <div class="rrow"><label class="small">From <input type="date" id="rpA" value="2026-12-20"></label><label class="small">To (last night) <input type="date" id="rpB" value="2027-01-04"></label><label class="small"><input type="checkbox" id="rpPeak" checked> Holiday rules (target = comps' top, no cuts)</label><button class="tab on" id="rpRunHol">Run</button><span id="rpHolMsg" class="small muted"></span></div><div id="rpHolOut">${RP.hol ? holHtml() : ""}</div></section>`;
   const fillHomes = async () => { const sid = $("rpSet").value; const r = await sb.from("comps").select("id,label").eq("set_id", sid).eq("tier", "Ours").eq("active", true);
-    $("rpHome").innerHTML = (r.data || []).map(c => `<option value="${escH(c.id)}">${escH((c.label || c.id).replace(/\s*\(.*?\)\s*$/, ""))}</option>`).join(""); };
+    $("rpHome").innerHTML = (r.data || []).map(c => `<option value="${escH(c.id)}">${escH(houseName(c.label || c.id, (state.sets || []).find(x => x.id === sid)?.name))}</option>`).join(""); };
   $("rpSet").onchange = fillHomes; fillHomes();
   $("rpRunBk").onclick = runBookingQuality; $("rpRunHol").onclick = runHoliday; $("rpOwner").onclick = ownerReport;
   wireRpDownloads(); loadAbRank(); loadDataStatus(); ppRender(); rpIndexWire();
@@ -1418,7 +1420,7 @@ async function ppGather(force) {
         const v = [], all = Object.values(by).map(c => c.Airbnb || c.VRBO).filter(Boolean); let closed = 0;
         for (const x of all) { if (!x.open) closed++; else if (x.rate != null) v.push(+x.rate); }
         D[k] = { adr: v.length >= 5 ? rAvg(v.filter(x => x <= 2.5 * quant(v, .5))) : null, fill: all.length >= 3 ? closed / all.length : null, n: all.length }; } }); }
-  const homes = (oc.data || []).map(h => ({ ...h, name: (h.label || h.id).replace(/\s*\(.*?\)\s*$/, ""), set: setName[h.set_id] || h.set_id }))
+  const homes = (oc.data || []).map(h => ({ ...h, name: houseName(h.label || h.id, setName[h.set_id] || ""), set: setName[h.set_id] || h.set_id }))
     .filter(h => setName[h.set_id]).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   say("");
   return (PP.g = { t: Date.now(), today, sets, setName, homes, BY, B, N, CD, capBeyond: (bs.data || [])[0]?.captured_at });
@@ -1862,7 +1864,7 @@ async function loadRater(force) {
     allRows(() => sb.from("home_ratings").select("*", { count: "exact" }).order("id")),
     allRows(() => sb.from("home_duels").select("*", { count: "exact" }).order("id"))]);
   const setName = id => state.sets.find(s => s.id === id)?.name || id;
-  RT.homes = (c.data || []).map(h => ({ ...h, name: (h.label || h.id).replace(/\s*\(.*?\)\s*$/, ""), set: setName(h.set_id) })).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  RT.homes = (c.data || []).map(h => ({ ...h, name: houseName(h.label || h.id, setName(h.set_id)), set: setName(h.set_id) })).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   RT.ai = Object.fromEntries((ai.data || []).map(a => [a.comp_id, a])); RT.ratings = rt.data || []; RT.duels = du.data || [];
   RT.err = c.error?.message || ai.error?.message || rt.error?.message || du.error?.message;
   if (!RT.hood) RT.hood = "*"; // 2026-10-20 (Brandon): rank homes more than neighborhoods -> default = all homes, least-scored first
