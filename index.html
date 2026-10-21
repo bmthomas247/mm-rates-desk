@@ -1785,6 +1785,7 @@ const ovbWhy = c => { if (!c) return ""; const out = [(OVB_WHY.find(([re]) => re
   if (/T/.test(c)) out.push("Thursday = halfway Wed/Fri"); const l = c.match(/L(\d+)/); if (l) out.push(`last-minute −${l[1]}%`);
   if (/W/.test(c)) out.push("held at damage guard"); if (/F/.test(c)) out.push("never-below floor");
   if (/E/.test(c)) out.push("these dates booked 150+ days out last year: +15%"); if (/C/.test(c)) out.push("capped near what our guests actually paid"); if (/U/.test(c)) out.push("raised toward what our guests actually paid");
+  const p = c.match(/P(\d+)/); if (p) out.push(`+${p[1]}% neighborhood booking 90+ days early`);
   return out.join(" · "); };
 async function ovbLoad(force) {
   if (OVB.d && !force) return OVB.d;
