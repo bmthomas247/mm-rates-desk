@@ -75,6 +75,14 @@ main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){displ
   #viewnav .tab.on{background:var(--tealbg);color:var(--teal2);border-color:var(--teal2);font-weight:600}
   #viewnav .navnote{display:none}
 }
+/* Reports index like Track (2026-10-20) */
+.rpbar{display:flex;gap:2px;background:var(--teal);padding:6px 6px 0;border-radius:10px 10px 0 0}.rpbar button{border:0;background:transparent;color:var(--onteal);font:inherit;font-size:15px;padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer}.rpbar button.on{background:var(--card);color:var(--ink);font-weight:600}
+.rpcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px 28px;padding:16px 20px 20px;border:1px solid var(--line);border-top:0;border-radius:0 0 10px 10px;margin-bottom:6px}.rpcols h3{font-size:18px;font-weight:500;margin:0 0 8px}.rpcols a{display:block;color:var(--teal2);text-decoration:none;font-size:14px;padding:2px 0}.rpcols a:hover{text-decoration:underline}
+.rpback{display:none;margin:4px 0 8px}#reportsBody.one #rpIndex{display:none}#reportsBody.one .rpback{display:block}#reportsBody.one .rpsec{display:none}#reportsBody.one .rpsec.show{display:block;border-top:0}#reportsBody:not(.one) .rpsec{display:none}
+.ppgrid{max-height:640px;overflow:auto}.ppgrid table{border-collapse:separate;border-spacing:0}.ppgrid td,.ppgrid th{padding:2px 5px;text-align:center;white-space:nowrap;border-bottom:1px solid var(--line)}.ppgrid th{position:sticky;top:0;background:var(--card);z-index:2}
+.ppsticky{position:sticky;left:0;background:var(--card);text-align:left!important;z-index:1;min-width:150px}.ppgrid th.ppsticky{z-index:3}.ppset{background:var(--tealbg)!important}.ppcomp{background:var(--tealbg);color:var(--muted);font-style:italic}.ppwe{color:var(--teal2)}
+.pphi{background:var(--redbg);color:var(--red)}.pplo{background:var(--amberbg);color:var(--amber)}.ppok{background:rgba(90,160,90,.12)}.ppb{background:#dde9f7;color:#2a5d9a}.ppo{background:var(--line);color:var(--muted)}
+@media (prefers-color-scheme:dark){.ppb{background:#1b2c40;color:#8fb7e6}}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
 dialog{max-height:90vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -144,7 +152,7 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
     <button class="tab on" id="colleenBtn" title="Builds the clean rate + minimum-stay sheet for every neighborhood (no comp data on it)">Build Kolleen sheet (all neighborhoods)</button>
     <button class="tab" id="landBtn" title="Compares Track's current rates and minimums with the last sheet we sent">Did it land?</button>
     <button class="tab" id="matchBtn" title="Possible same-home matches across Airbnb / VRBO for you to confirm">Review matches</button>
-    <span id="weeklyMsg" class="small muted"></span></div><div id="landOut"></div></div>
+    <span id="weeklyMsg" class="small muted"></span></div><section style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><h3 style="margin:0 0 4px;font-size:16px">✅ Pricing check · what to bring up with Kolleen this week</h3><div id="kolOut"></div></section><div id="landOut"></div></div>
   <div class="card" id="viewnav" style="padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="tab on" data-v="desk" title="Desk: comps, rates and calendars"><span class="ic">🏠</span><span>Desk</span></button><button class="tab" data-v="pulse" title="Market pulse: searches, markets, flights, news, events"><span class="ic">📈</span><span>Market pulse</span></button><button class="tab" data-v="hotels" title="Hotel rates near our homes"><span class="ic">🏨</span><span>Hotels</span></button><button class="tab" data-v="rater" title="Score and rank our homes"><span class="ic">⭐</span><span>Home Rater</span></button><button class="tab" data-v="reports" title="Booked too low, great bookings, Airbnb rank, owner reports"><span class="ic">📋</span><span>Reports</span></button><button class="tab" data-v="beyond" title="Weekly Kolleen sheet, Did it land?, matches to review"><span class="ic">🤝</span><span>Beyond Pricing</span></button><span class="small muted navnote">Market pulse = searches, stock markets, currencies, flights, news and events. Hotels = hotel rates near our homes.</span></div>
   <div class="card" id="reports"><h2 style="margin:0 0 8px">📋 Reports</h2><p class="small muted" style="margin:0 0 8px">Reports to share with owners or between ourselves. Kolleen-facing downloads carry rates only (no comp data).</p><div id="reportsBody"></div></div>
   <div class="card" id="rater"><h2 style="margin:0 0 8px">⭐ Home Rater</h2><p class="small muted" style="margin:0 0 8px">Score our homes 1–5 and pick which of two homes is nicer. Everyone's scores are combined in Rankings, next to Claude's AI score from the listing photos (ESTIMATE). The pricing engine will use these to price nicer homes higher within the same area.</p><div id="raterBody"></div></div>
@@ -223,10 +231,11 @@ main .card.collapsed>h2:first-child{margin-bottom:0}
   const key = c => "mmc:" + (c.id || (c.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40));
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const set = (k, v) => { try { v ? localStorage.setItem(k, "1") : localStorage.removeItem(k); } catch (e) {} };
-  const apply = () => document.querySelectorAll("main .card").forEach(c => { if (get(key(c))) c.classList.add("collapsed"); });
+  const NO = new Set(["reports", "weekly", "pulse", "rater"]); // 2026-10-20 (Brandon): these pages always stay open
+  const apply = () => document.querySelectorAll("main .card").forEach(c => { if (NO.has(c.id)) c.classList.remove("collapsed"); else if (get(key(c))) c.classList.add("collapsed"); });
   document.addEventListener("click", e => {
     const h = e.target.closest("h2"); if (!h) return;
-    const c = h.closest("main .card"); if (!c) return;
+    const c = h.closest("main .card"); if (!c || NO.has(c.id)) return;
     const first = c.firstElementChild; if (!(first === h || (c.id === "search" && first.contains(h)))) return;
     c.classList.toggle("collapsed"); set(key(c), c.classList.contains("collapsed"));
   });
@@ -1144,6 +1153,7 @@ function setView(v) {
   if (v === "pulse") loadPulse();
   if (v === "rater") loadRater();
   if (v === "reports" && !RP.busy) renderReports();
+  if (v === "beyond") kolRender();
   if (v === "hotels") { $("hotCard").open = true; renderHotels(); } else if ($("hotCard").open) renderHotels();
   try { localStorage.setItem("mmView", v); } catch (e) {}
   window.scrollTo(0, 0);
@@ -1323,20 +1333,23 @@ function renderReports() {
   const ours = []; // our homes across sets, for the owner report picker
   const sets = (state.sets || []).filter(s => s.active !== false);
   $("reportsBody").innerHTML = `
-  <section class="rpsec"><h3>🟡 Booked too low · 🟢 Great bookings <span class="small muted">all our homes, upcoming guest stays (next 180 days)</span></h3>
+  <div id="rpIndex"></div>
+  <div class="rpback"><a href="#" id="rpBack">← All reports</a> <b id="rpOpenName"></b></div>
+  <section class="rpsec" data-rp="pp"><div id="ppOut"></div></section>
+  <section class="rpsec" data-rp="bk"><h3>🟡 Booked too low · 🟢 Great bookings <span class="small muted">all our homes, upcoming guest stays (next 180 days)</span></h3>
     <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×1.58, Airbnb/VRBO ×1.375: our +15% plan and the fees folded into the nightly price). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 5+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
     <div class="rrow"><button class="tab on" id="rpRunBk">Run for all neighborhoods</button><span id="rpBkMsg" class="small muted">${RP.bk ? "Last run " + RP.bk.at.toLocaleTimeString() : "Takes about a minute."}</span></div><div id="rpBkOut">${RP.bk ? bkHtml() : ""}</div></section>
-  <section class="rpsec"><h3>🔍 Airbnb search: where our homes show · 📉 comp price drops <span class="small muted">last 7 days (airbnb_search.py, nightly)</span></h3><div id="rpAbOut"></div></section>
-  <section class="rpsec"><h3>🕒 When the data was updated · 📚 Where it comes from</h3><div id="rpSrcOut"></div></section>
-  <section class="rpsec"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
+  <section class="rpsec" data-rp="ab"><h3>🔍 Airbnb search: where our homes show · 📉 comp price drops <span class="small muted">last 7 days (airbnb_search.py, nightly)</span></h3><div id="rpAbOut"></div></section>
+  <section class="rpsec" data-rp="src"><h3>🕒 When the data was updated · 📚 Where it comes from</h3><div id="rpSrcOut"></div></section>
+  <section class="rpsec" data-rp="owner"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
     <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a clean page you can print or save as PDF. No other owners' names; comps shown only as averages.</span></div></section>
-  <section class="rpsec"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
+  <section class="rpsec" data-rp="hol"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
     <div class="rrow"><label class="small">From <input type="date" id="rpA" value="2026-12-20"></label><label class="small">To (last night) <input type="date" id="rpB" value="2027-01-04"></label><label class="small"><input type="checkbox" id="rpPeak" checked> Holiday rules (target = comps' top, no cuts)</label><button class="tab on" id="rpRunHol">Run</button><span id="rpHolMsg" class="small muted"></span></div><div id="rpHolOut">${RP.hol ? holHtml() : ""}</div></section>`;
   const fillHomes = async () => { const sid = $("rpSet").value; const r = await sb.from("comps").select("id,label").eq("set_id", sid).eq("tier", "Ours").eq("active", true);
     $("rpHome").innerHTML = (r.data || []).map(c => `<option value="${escH(c.id)}">${escH((c.label || c.id).replace(/\s*\(.*?\)\s*$/, ""))}</option>`).join(""); };
   $("rpSet").onchange = fillHomes; fillHomes();
   $("rpRunBk").onclick = runBookingQuality; $("rpRunHol").onclick = runHoliday; $("rpOwner").onclick = ownerReport;
-  wireRpDownloads(); loadAbRank(); loadDataStatus();
+  wireRpDownloads(); loadAbRank(); loadDataStatus(); ppRender(); rpIndexWire();
 }
 // 2026-10-20 (Brandon): every feed, when it last updated, how often it should, and its source.
 const FEEDS = [ // [name, what it gives us, table, time column, filter [col, val] or null, expected days, source label, source url]
@@ -1374,6 +1387,249 @@ async function loadDataStatus() {
     return `<tr><td><b>${escH(f[0])}</b><div class="muted">${escH(f[1])}</div></td><td><span style="color:var(${col})">●</span> ${at ? `${new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} <span class="muted">· ${ago(at)}</span>${late ? ` <b style="color:var(--red)">late</b>` : ""}` : `<span class="muted">${err ? "can't read" : "no data yet"}</span>`}</td><td>${f[7] ? `<a href="${escH(f[7])}" target="_blank" rel="noopener">${escH(f[6])}</a>` : escH(f[6])}</td></tr>`; }).join("")}</table></div>
   <p class="small muted" style="margin:4px 0 0">● green = on schedule · red = later than its normal schedule (check logs\\pull.log on the ThinkStation) · grey = not started yet. Every price row on the Desk also keeps its own source link and capture time. <button class="tab" id="rpSrcRe" style="padding:2px 10px">Refresh</button></p>`;
   $("rpSrcRe").onclick = () => { RP.src = null; loadDataStatus(); };
+}
+// ===== Pricing & performance reports (Brandon 2026-10-20): Daily pricing by unit, Season pricing review, Reservation pace,
+// Unit performance, Unit vs market. One data pull (about 30 s) feeds all five. Sources: Beyond posted prices (beyond_snapshots,
+// read-only API), our bookings (Track, read-only), comp nightly rates + open nights (AirROI / KeyData). ESTIMATE where noted.
+const PP = { g: null, tab: "daily", days: 30, hood: "*", busy: false };
+const PP_BASIS = 1.58; // our posted nightly (Track rack rent) -> comps' Airbnb nightly basis (+15% plan + folded fees; Track fee setup 2026-10-13)
+const SEASONS = [["Fall shoulder", "2026-10-20", "2026-11-19"], ["Early ski", "2026-11-20", "2026-12-18"], ["Christmas / New Year", "2026-12-19", "2027-01-03"],
+  ["January", "2027-01-04", "2027-01-31"], ["February (Presidents Day)", "2027-02-01", "2027-02-28"], ["March / spring break", "2027-03-01", "2027-04-11"], ["Spring shoulder", "2027-04-12", "2027-05-20"]];
+async function ppGather(force) {
+  if (PP.g && !force && Date.now() - PP.g.t < 15 * 60e3) return PP.g;
+  const say = t => ["ppMsg", "kolRunMsg"].forEach(id => { const m = $(id); if (m) m.textContent = t; }), today = iso(new Date(new Date().setHours(12, 0, 0, 0)));
+  const sets = (state.sets || []).filter(s => s.active !== false), setName = Object.fromEntries((state.sets || []).map(s => [s.id, s.name]));
+  say("Loading our homes, Beyond prices and bookings…");
+  const [oc, bs, bk] = await Promise.all([
+    allRows(() => sb.from("comps").select("id,label,set_id,bedrooms,sleeps", { count: "exact" }).eq("tier", "Ours").eq("active", true).order("id")),
+    allRows(() => sb.from("beyond_snapshots").select("comp_id,captured_at,start_date,price_posted,eff_min,base_price,url", { count: "exact" }).gte("captured_at", addD(today, -3)).order("captured_at", { ascending: false }).order("id")),
+    allRows(() => sb.from("our_bookings").select("comp_id,arrival,departure,nights,kind,channel,gross_rent,booked_at,status", { count: "exact" }).order("comp_id").order("reservation_id"))]);
+  const BY = {}; for (const r of bs.data || []) if (!BY[r.comp_id]) BY[r.comp_id] = r;
+  const B = (bk.data || []).filter(b => b.status !== "Cancelled"), N = {};
+  for (const b of B) { const per = b.kind === "guest" && b.nights ? (+b.gross_rent || 0) / b.nights : null;
+    for (let k = b.arrival; k < b.departure; k = addD(k, 1)) ((N[b.comp_id] ||= {})[k] = { kind: b.kind, rent: per, ch: b.channel }); }
+  const CD = {}, horizon = 180;
+  for (let i = 0; i < sets.length; i += 6) { say(`Loading comp rates… ${i} of ${sets.length} neighborhoods`);
+    const part = sets.slice(i, i + 6), rs = await Promise.all(part.map(s => setNightly(s.id)));
+    part.forEach((s, j) => { const rows = (rs[j].data || []).filter(n => n.tier !== "Ours" && n.tier !== "Secondary"), D = (CD[s.id] = {});
+      for (let d = 0; d < horizon; d++) { const k = addD(today, d), by = {};
+        for (const n of rows) { const off = Math.round((new Date(k + "T12:00:00") - new Date(n.start_date + "T12:00:00")) / 864e5);
+          if (off < 0 || off >= (n.avail || "").length) continue; (by[n.comp_id] ||= {})[n.channel] = { open: n.avail[off] === "1", rate: n.rates?.[off] }; }
+        const v = [], all = Object.values(by).map(c => c.Airbnb || c.VRBO).filter(Boolean); let closed = 0;
+        for (const x of all) { if (!x.open) closed++; else if (x.rate != null) v.push(+x.rate); }
+        D[k] = { adr: v.length >= 3 ? rAvg(v.filter(x => x <= 2.5 * quant(v, .5))) : null, fill: all.length >= 3 ? closed / all.length : null, n: all.length }; } }); }
+  const homes = (oc.data || []).map(h => ({ ...h, name: (h.label || h.id).replace(/\s*\(.*?\)\s*$/, ""), set: setName[h.set_id] || h.set_id }))
+    .filter(h => setName[h.set_id]).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  say("");
+  return (PP.g = { t: Date.now(), today, sets, setName, homes, BY, B, N, CD, capBeyond: (bs.data || [])[0]?.captured_at });
+}
+const ppPosted = (g, id, k) => { const b = g.BY[id]; if (!b) return null; const off = Math.round((new Date(k + "T12:00:00") - new Date(b.start_date + "T12:00:00")) / 864e5); return off >= 0 ? b.price_posted?.[off] ?? null : null; };
+const ppPct = v => v == null || isNaN(v) ? "—" : (v >= 0 ? "+" : "") + Math.round(v * 100) + "%";
+const ppFillPct = v => v == null ? "—" : Math.round(v * 100) + "%";
+function ppRange(g, a, n) { const out = []; for (let i = 0; i < n; i++) out.push(addD(a, i)); return out; }
+// One home over a list of nights: our fill (guest nights / nights not owner-blocked), booked ADR, posted (open nights), comps.
+function ppStats(g, h, ks) {
+  let guest = 0, own = 0, blk = 0, rent = 0, post = [], cadr = [], cfill = [];
+  for (const k of ks) { const n = g.N[h.id]?.[k], c = g.CD[h.set_id]?.[k];
+    if (n?.kind === "guest") { guest++; rent += n.rent || 0; } else if (n?.kind === "owner") own++; else if (n) blk++;
+    else { const p = ppPosted(g, h.id, k); if (p != null) post.push(+p); }
+    if (c?.adr != null) cadr.push(c.adr); if (c?.fill != null) cfill.push(c.fill); }
+  const avail = ks.length - own - blk, postAvg = rAvg(post), cAdr = rAvg(cadr);
+  return { nights: ks.length, guest, own, blk, avail, fill: avail ? guest / avail : null, adr: guest ? rent / guest : null, rent, revpar: avail ? rent / avail : null,
+    post: postAvg, postAb: postAvg != null ? postAvg * PP_BASIS : null, cAdr, cFill: rAvg(cfill), gap: postAvg != null && cAdr ? postAvg * PP_BASIS / cAdr - 1 : null };
+}
+const ppHomes = g => g.homes.filter(h => PP.hood === "*" || h.set_id === PP.hood);
+function ppDaily(g) {
+  const ks = ppRange(g, g.today, PP.days), H = ppHomes(g);
+  const cell = (h, k) => { const n = g.N[h.id]?.[k];
+    if (n) return n.kind === "guest" ? `<td class="ppb" title="Booked · ${escH(n.ch || "")} · ${fmt(n.rent)}/night">${n.rent ? Math.round(n.rent) : "B"}</td>` : `<td class="ppo" title="${n.kind === "owner" ? "Owner stay" : "Blocked"}">${n.kind === "owner" ? "O" : "X"}</td>`;
+    const p = ppPosted(g, h.id, k), c = g.CD[h.set_id]?.[k]; if (p == null) return `<td class="muted">—</td>`;
+    const gp = c?.adr ? p * PP_BASIS / c.adr - 1 : null, cls = gp == null ? "" : gp >= 0.15 ? "pphi" : gp <= -0.15 ? "pplo" : "ppok";
+    return `<td class="${cls}" title="Posted ${fmt(p)} (Airbnb basis ${fmt(p * PP_BASIS)}) · comps ${c?.adr ? fmt(c.adr) : "—"} · ${ppPct(gp)} · comps booked ${ppFillPct(c?.fill)}">${Math.round(p)}</td>`; };
+  let h = `<div class="wrap ppgrid"><table class="small"><tr><th class="ppsticky">Home</th>${ks.map(k => { const d = new Date(k + "T12:00"); return `<th class="${[5, 6].includes(d.getDay()) ? "ppwe" : ""}">${d.toLocaleDateString(undefined, { weekday: "narrow" })}<br>${d.getMonth() + 1}/${d.getDate()}</th>`; }).join("")}</tr>`;
+  let last = null;
+  for (const x of H) { if (x.set !== last) { h += `<tr><td class="ppsticky ppset" colspan="1"><b>${escH(x.set)}</b></td>${ks.map(k => { const c = g.CD[x.set_id]?.[k]; return `<td class="ppcomp" title="Comp average nightly (Airbnb basis), comps booked ${ppFillPct(c?.fill)}">${c?.adr ? Math.round(c.adr) : ""}</td>`; }).join("")}</tr>`; last = x.set; }
+    h += `<tr><td class="ppsticky">${escH(x.name)}</td>${ks.map(k => cell(x, k)).join("")}</tr>`; }
+  h += `</table></div><p class="small muted" style="margin:4px 0 0">Numbers = Beyond's posted nightly price (rent, before fees). Grey rows = the neighborhood's comp average nightly on Airbnb (Airbnb basis). Colors compare our posted price on the Airbnb basis (×${PP_BASIS}) with that comp average: <span class="pphi">&nbsp;red&nbsp;</span> 15%+ above · <span class="ppok">&nbsp;green&nbsp;</span> within 15% · <span class="pplo">&nbsp;amber&nbsp;</span> 15%+ below. Blue = booked (rent/night), O = owner stay, X = blocked. Hover any cell for details. ESTIMATE.</p>`;
+  return h;
+}
+function ppSeason(g) {
+  const H = ppHomes(g), end = addD(g.today, 179), S = SEASONS.map(([n, a, b]) => [n, a < g.today ? g.today : a, b > end ? end : b]).filter(s => s[1] <= s[2]);
+  const rows = []; for (const x of H) for (const [n, a, b] of S) { const ks = []; for (let k = a; k <= b; k = addD(k, 1)) ks.push(k); const s = ppStats(g, x, ks);
+    let act = "Hold", why = "";
+    if (s.fill != null && s.cFill != null && s.gap != null) {
+      if (s.fill < s.cFill - 0.15 && s.gap > 0.05) { act = "🔴 Lower"; why = `booking slower than comps (${ppFillPct(s.fill)} vs ${ppFillPct(s.cFill)}) and priced ${ppPct(s.gap)} above`; }
+      else if (s.fill > s.cFill + 0.15 && s.gap < -0.05) { act = "🟡 Raise"; why = `booking faster than comps (${ppFillPct(s.fill)} vs ${ppFillPct(s.cFill)}) and priced ${ppPct(s.gap)} below`; }
+      else if (s.gap > 0.25) { act = "Watch (high)"; why = `priced ${ppPct(s.gap)} above comps`; } else if (s.gap < -0.25) { act = "Watch (low)"; why = `priced ${ppPct(s.gap)} below comps`; } }
+    rows.push({ x, n, s, act, why }); }
+  PP.seasonRows = rows;
+  const sum = S.map(([n]) => { const r = rows.filter(z => z.n === n), f = r.map(z => z.s.fill).filter(v => v != null), cf = r.map(z => z.s.cFill).filter(v => v != null), gp = r.map(z => z.s.gap).filter(v => v != null);
+    return `<tr><td><b>${escH(n)}</b></td><td>${ppFillPct(rAvg(f))}</td><td>${ppFillPct(rAvg(cf))}</td><td>${ppPct(rAvg(gp))}</td><td>${r.filter(z => z.act.includes("Lower")).length}</td><td>${r.filter(z => z.act.includes("Raise")).length}</td></tr>`; }).join("");
+  let h = `<h4 style="margin:6px 0 4px">By season (all homes shown)</h4><div class="wrap"><table class="small"><tr><th style="text-align:left">Season</th><th>Our homes booked</th><th>Comps booked</th><th>Our price vs comps</th><th>🔴 Lower</th><th>🟡 Raise</th></tr>${sum}</table></div>`;
+  const flagged = rows.filter(z => z.act !== "Hold").sort((a, b) => (a.act.includes("Lower") ? 0 : a.act.includes("Raise") ? 1 : 2) - (b.act.includes("Lower") ? 0 : b.act.includes("Raise") ? 1 : 2));
+  h += `<h4 style="margin:12px 0 4px">Homes to look at (${flagged.length})</h4><div class="wrap" style="max-height:520px;overflow:auto"><table class="small"><tr><th style="text-align:left">Home</th><th style="text-align:left">Season</th><th>Booked</th><th>Comps booked</th><th>Booked ADR</th><th>Posted (open nights)</th><th>Comp nightly</th><th>Gap</th><th style="text-align:left">Action</th></tr>${flagged.map(z => `<tr><td>${escH(z.x.name)}<div class="muted">${escH(z.x.set)}</div></td><td>${escH(z.n)}</td><td>${ppFillPct(z.s.fill)}</td><td>${ppFillPct(z.s.cFill)}</td><td>${fmt(z.s.adr)}</td><td>${fmt(z.s.post)}</td><td>${fmt(z.s.cAdr)}</td><td>${ppPct(z.s.gap)}</td><td><b>${escH(z.act)}</b><div class="muted">${escH(z.why)}</div></td></tr>`).join("")}</table></div>`;
+  return h + `<p class="small muted" style="margin:4px 0 0">Booked = guest nights ÷ nights not used by owners or blocks. Comps booked = comp nights not open (includes their owner blocks, so ESTIMATE). Gap = our posted price on the Airbnb basis (×${PP_BASIS}) vs the comps' average open nightly rate. 🔴 Lower = we book 15+ points slower than comps and sit 5%+ above them; 🟡 Raise = we book 15+ points faster and sit 5%+ below. Seasons through ${escH(end)} (Beyond posts 180 days).</p>`;
+}
+function ppPace(g) {
+  const T = g.today, yAgo = addD(T, -364), H = new Set(ppHomes(g).map(h => h.id)), G = g.B.filter(b => b.kind === "guest" && H.has(b.comp_id));
+  const months = []; { const d = new Date(T + "T12:00"); for (let i = 0; i < 7; i++) { const m = new Date(d.getFullYear(), d.getMonth() + i, 1); months.push(m.toISOString().slice(0, 7)); } }
+  const nightsIn = (b, m) => { let n = 0; for (let k = b.arrival; k < b.departure; k = addD(k, 1)) if (k.slice(0, 7) === m) n++; return n; };
+  const lyM = m => { const [y, mo] = m.split("-"); return `${+y - 1}-${mo}`; };
+  const agg = (m, asOf) => { let n = 0, r = 0, c = 0; for (const b of G) { if (asOf && (b.booked_at || "").slice(0, 10) > asOf) continue; const x = nightsIn(b, m); if (!x) continue; n += x; r += x * ((+b.gross_rent || 0) / b.nights); c++; } return { n, r, c }; };
+  const homesLY = new Set(G.filter(b => b.arrival < addD(T, -300)).map(b => b.comp_id)).size;
+  let h = `<div class="wrap"><table class="small"><tr><th style="text-align:left">Arrival month</th><th>On the books now (nights)</th><th>Rent on the books</th><th>ADR</th><th>Same day last year (nights)</th><th>Rent then</th><th>Nights vs LY</th><th>Rent vs LY</th></tr>`;
+  for (const m of months) { const a = agg(m, null), l = agg(lyM(m), yAgo), dn = l.n ? a.n / l.n - 1 : null, dr = l.r ? a.r / l.r - 1 : null;
+    h += `<tr><td><b>${new Date(m + "-15").toLocaleDateString(undefined, { month: "long", year: "numeric" })}</b></td><td>${a.n.toLocaleString()}</td><td>${fmt(a.r)}</td><td>${fmt(a.n ? a.r / a.n : null)}</td><td>${l.n ? l.n.toLocaleString() : "—"}</td><td>${l.r ? fmt(l.r) : "—"}</td><td>${dn == null ? "—" : `<b style="color:var(${dn >= 0 ? "--green" : "--red"})">${ppPct(dn)}</b>`}</td><td>${dr == null ? "—" : `<b style="color:var(${dr >= 0 ? "--green" : "--red"})">${ppPct(dr)}</b>`}</td></tr>`; }
+  h += `</table></div>`;
+  const pick = (a, b) => G.filter(x => (x.booked_at || "").slice(0, 10) >= a && (x.booked_at || "").slice(0, 10) <= b);
+  const w = [["Last 7 days", addD(T, -7)], ["Last 30 days", addD(T, -30)]].map(([n, a]) => { const t = pick(a, T), l = pick(addD(a, -364), yAgo), sum = z => z.reduce((s, x) => s + (+x.gross_rent || 0), 0);
+    return `<tr><td><b>${n}</b></td><td>${t.length}</td><td>${fmt(sum(t))}</td><td>${l.length}</td><td>${fmt(sum(l))}</td><td>${l.length ? ppPct(t.length / l.length - 1) : "—"}</td></tr>`; }).join("");
+  h += `<h4 style="margin:12px 0 4px">New reservations made (pickup)</h4><div class="wrap"><table class="small"><tr><th style="text-align:left">Booked in</th><th>Reservations</th><th>Rent</th><th>Same days last year</th><th>Rent then</th><th>Change</th></tr>${w}</table></div>`;
+  const hoods = [...new Set(ppHomes(g).map(x => x.set_id))], m3 = months.slice(0, 4);
+  h += `<h4 style="margin:12px 0 4px">By neighborhood (nights on the books vs same day last year)</h4><div class="wrap" style="max-height:420px;overflow:auto"><table class="small"><tr><th style="text-align:left">Neighborhood</th>${m3.map(m => `<th>${new Date(m + "-15").toLocaleDateString(undefined, { month: "short" })}</th>`).join("")}</tr>${hoods.map(sid => { const ids = new Set(g.homes.filter(x => x.set_id === sid).map(x => x.id)), GG = G.filter(b => ids.has(b.comp_id));
+    return `<tr><td>${escH(g.setName[sid])}</td>${m3.map(m => { let a = 0, l = 0; for (const b of GG) { a += nightsIn(b, m); if ((b.booked_at || "").slice(0, 10) <= yAgo) l += nightsIn(b, lyM(m)); } return `<td style="text-align:center">${a}${l ? ` <span style="color:var(${a >= l ? "--green" : "--red"})">(${ppPct(a / l - 1)})</span>` : ` <span class="muted">(— LY)</span>`}</td>`; }).join("")}</tr>`; }).join("")}</table></div>`;
+  return h + `<p class="small muted" style="margin:4px 0 0">Guest reservations only (owner stays and blocks left out), cancelled left out. "Same day last year" = what was on the books for the same month a year earlier, as of ${escH(yAgo)}. Our Track history starts with Sep 2025 arrivals and homes added since then make this year look bigger (homes with stays a year ago: ${homesLY}). Rent = gross rent from Track.</p>`;
+}
+function ppPerf(g) {
+  const T = g.today, past = ppRange(g, addD(T, -90), 90), next = ppRange(g, T, 90), y0 = T.slice(0, 4) + "-01-01";
+  const rows = ppHomes(g).map(x => { const p = ppStats(g, x, past), n = ppStats(g, x, next), bk = g.B.filter(b => b.comp_id === x.id && b.kind === "guest");
+    const ytd = bk.reduce((s, b) => { let r = 0; for (let k = b.arrival; k < b.departure; k = addD(k, 1)) if (k >= y0 && k < T) r += (+b.gross_rent || 0) / b.nights; return s + r; }, 0);
+    const recent = bk.filter(b => b.arrival >= addD(T, -180)), lead = recent.map(b => b.booked_at ? (new Date(b.arrival) - new Date(b.booked_at)) / 864e5 : null).filter(v => v != null && v >= 0);
+    return { x, p, n, ytd, los: rAvg(recent.map(b => b.nights)), lead: rAvg(lead), resv: recent.length, ai: RT.ai?.[x.id]?.overall ?? null }; });
+  rows.sort((a, b) => (b.p.revpar ?? -1) - (a.p.revpar ?? -1)); rows.forEach((r, i) => r.rank = i + 1); PP.perfRows = rows;
+  return `<div class="wrap" style="max-height:600px;overflow:auto"><table class="small"><tr><th>#</th><th style="text-align:left">Home</th><th>Booked last 90</th><th>ADR last 90</th><th>RevPAR last 90</th><th>Rent last 90</th><th>Rent YTD</th><th>On the books next 90</th><th>Rent next 90</th><th>Owner nights next 90</th><th>Avg stay</th><th>Booked ahead</th><th>AI score</th></tr>${rows.map(r => `<tr><td class="muted">${r.rank}</td><td>${escH(r.x.name)}<div class="muted">${escH(r.x.set)}${r.x.bedrooms ? " · " + r.x.bedrooms + "BR" : ""}</div></td><td>${ppFillPct(r.p.fill)}</td><td>${fmt(r.p.adr)}</td><td><b>${fmt(r.p.revpar)}</b></td><td>${fmt(r.p.rent)}</td><td>${fmt(r.ytd)}</td><td>${ppFillPct(r.n.fill)}</td><td>${fmt(r.n.rent)}</td><td>${r.n.own || "—"}</td><td>${r.los ? r.los.toFixed(1) + " n" : "—"}</td><td>${r.lead != null ? Math.round(r.lead) + " d" : "—"}</td><td>${r.ai != null ? (+r.ai).toFixed(1) : "—"}</td></tr>`).join("")}</table></div>
+  <p class="small muted" style="margin:4px 0 0">Sorted by RevPAR last 90 days (rent ÷ nights not used by owners or blocks). Booked = guest nights ÷ those nights. Avg stay, booked ahead = guest stays arriving in the last 180 days. Rent = gross rent from Track (before fees). AI score opens after the Home Rater tab has loaded once.</p>`;
+}
+function ppVsMkt(g) {
+  const T = g.today, w1 = ppRange(g, T, 30), w2 = ppRange(g, addD(T, 30), 30);
+  const rows = ppHomes(g).map(x => { const a = ppStats(g, x, w1), b = ppStats(g, x, w2), flag = s => s.fill == null || s.cFill == null || s.gap == null ? "" :
+      s.fill < s.cFill - 0.15 && s.gap > 0.05 ? "🔴" : s.fill > s.cFill + 0.15 && s.gap < -0.05 ? "🟡" : "";
+    const act = s => { if (s.gap == null) return ""; const f = flag(s); return f === "🔴" ? `Lower ~${Math.round(Math.min(s.gap, 0.25) * 100)}% toward comps` : f === "🟡" ? `Raise ~${Math.round(Math.min(-s.gap, 0.25) * 100)}%` : ""; };
+    return { x, a, b, fa: flag(a), fb: flag(b), aa: act(a), ab: act(b) }; });
+  rows.sort((p, q) => ((q.fa ? 2 : 0) + (q.fb ? 1 : 0)) - ((p.fa ? 2 : 0) + (p.fb ? 1 : 0)) || (q.a.gap ?? 0) - (p.a.gap ?? 0)); PP.mktRows = rows;
+  const c = (s, f, ac) => `<td>${ppFillPct(s.fill)} <span class="muted">vs ${ppFillPct(s.cFill)}</span></td><td>${fmt(s.postAb)} <span class="muted">vs ${fmt(s.cAdr)}</span></td><td>${f ? f + " " : ""}<b>${ppPct(s.gap)}</b>${ac ? `<div class="muted">${escH(ac)}</div>` : ""}</td>`;
+  return `<p class="small">${rows.filter(r => r.fa === "🔴").length} 🔴 not booking (next 30) · ${rows.filter(r => r.fa === "🟡").length} 🟡 priced low and filling fast (next 30)</p><div class="wrap" style="max-height:600px;overflow:auto"><table class="small"><tr><th style="text-align:left" rowspan="2">Home</th><th colspan="3">Next 30 days</th><th colspan="3">Days 31–60</th></tr><tr><th>Booked: us vs comps</th><th>Price: us vs comps</th><th>Gap</th><th>Booked: us vs comps</th><th>Price: us vs comps</th><th>Gap</th></tr>${rows.map(r => `<tr><td>${escH(r.x.name)}<div class="muted">${escH(r.x.set)}</div></td>${c(r.a, r.fa, r.aa)}${c(r.b, r.fb, r.ab)}</tr>`).join("")}</table></div>
+  <p class="small muted" style="margin:4px 0 0">Price = our Beyond posted nightly on open nights on the Airbnb basis (×${PP_BASIS}) vs the comps' average open nightly rate. Booked = guest nights ÷ nights not used by owners/blocks; comps booked = comp nights not open (ESTIMATE). 🔴 NOT BOOKING = 15+ points behind comps and 5%+ above them. 🟡 = 15+ points ahead and 5%+ below (likely booking too low). Suggested moves are capped at 25% per step.</p>`;
+}
+const ppChName = c => /airbnb|\babb\b/i.test(c || "") ? "Airbnb" : /vrbo|homeaway/i.test(c || "") ? "VRBO" : /booking\.com|\bbdc\b/i.test(c || "") ? "Booking.com" : "Direct / other";
+function ppChan(g) {
+  const T = g.today, H = new Set(ppHomes(g).map(h => h.id)), G = g.B.filter(b => b.kind === "guest" && H.has(b.comp_id));
+  const win = (a, b) => { const by = {}; for (const x of G) { if (x.arrival < a || x.arrival >= b) continue; const k = ppChName(x.channel), o = (by[k] ||= { r: 0, n: 0, rent: 0, lead: [], raw: {} });
+      o.r++; o.n += x.nights || 0; o.rent += +x.gross_rent || 0; o.raw[x.channel || "?"] = (o.raw[x.channel || "?"] || 0) + 1; if (x.booked_at) o.lead.push((new Date(x.arrival) - new Date(x.booked_at)) / 864e5); }
+    const tot = Object.values(by).reduce((s, o) => s + o.rent, 0);
+    return `<div class="wrap"><table class="small"><tr><th style="text-align:left">Channel</th><th>Reservations</th><th>Nights</th><th>Rent</th><th>ADR</th><th>Share of rent</th><th>Avg booked ahead</th><th style="text-align:left">Track channel names</th></tr>${Object.entries(by).sort((a, b) => b[1].rent - a[1].rent).map(([k, o]) => `<tr><td><b>${escH(k)}</b></td><td>${o.r}</td><td>${o.n}</td><td>${fmt(o.rent)}</td><td>${fmt(o.n ? o.rent / o.n : null)}</td><td>${tot ? Math.round(o.rent / tot * 100) + "%" : "—"}</td><td>${o.lead.length ? Math.round(rAvg(o.lead)) + " d" : "—"}</td><td class="muted">${escH(Object.entries(o.raw).map(([c, n]) => `${c} (${n})`).join(", "))}</td></tr>`).join("")}</table></div>`; };
+  return `<h4 style="margin:6px 0 4px">Arrivals in the last 90 days</h4>${win(addD(T, -90), T)}<h4 style="margin:12px 0 4px">Arrivals in the next 90 days (on the books)</h4>${win(T, addD(T, 90))}<h4 style="margin:12px 0 4px">Same next-90 window last year</h4>${win(addD(T, -364), addD(T, -274))}<p class="small muted" style="margin:4px 0 0">Guest reservations from Track (read-only), cancelled left out. Rent = gross rent before fees; Airbnb/VRBO rent already carries our +15% channel plan. Channels grouped from Track's channel names (shown at right).</p>`;
+}
+function ppRender() {
+  const el = $("ppOut"); if (!el) return; const g = PP.g;
+  const tabs = [["daily", "📅 Daily pricing by unit"], ["season", "🍂 Season pricing review"], ["pace", "📈 Reservation pace"], ["perf", "🏆 Unit performance"], ["mkt", "⚖️ Unit vs market"], ["chan", "🔀 Channel mix"]];
+  const hoods = (state.sets || []).filter(s => s.active !== false);
+  let h = `<div class="rrow">${tabs.map(([k, l]) => `<button class="tab${PP.tab === k ? " on" : ""}" data-pp="${k}">${l}</button>`).join("")}</div>
+    <div class="rrow"><select id="ppHood"><option value="*">All neighborhoods</option>${hoods.map(s => `<option value="${escH(s.id)}"${PP.hood === s.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select>${PP.tab === "daily" ? `<select id="ppDays">${[14, 30, 60, 90, 180].map(d => `<option${PP.days === d ? " selected" : ""} value="${d}">Next ${d} days</option>`).join("")}</select>` : ""}<button class="tab" id="ppGo">${g ? "Refresh data" : "Build reports (about 30 seconds)"}</button><button class="tab" id="ppDl"${g ? "" : " disabled"}>Download this report (Excel)</button><span id="ppMsg" class="small muted">${g ? `Data loaded ${new Date(g.t).toLocaleTimeString()} · Beyond prices captured ${g.capBeyond ? new Date(g.capBeyond).toLocaleString() : "—"}` : ""}</span></div>`;
+  if (g) h += `<div id="ppBody">${PP.tab === "daily" ? ppDaily(g) : PP.tab === "season" ? ppSeason(g) : PP.tab === "pace" ? ppPace(g) : PP.tab === "perf" ? ppPerf(g) : PP.tab === "chan" ? ppChan(g) : ppVsMkt(g)}</div>`;
+  h += srcLine("Beyond posted prices (Beyond API, read-only, nightly) · our reservations (Track API, read-only) · comp nightly rates + open nights (AirROI Airbnb calendars, KeyData VRBO)", null);
+  el.innerHTML = h;
+  el.querySelectorAll("[data-pp]").forEach(b => b.onclick = () => { PP.tab = b.dataset.pp; ppRender(); });
+  $("ppHood").onchange = e => { PP.hood = e.target.value; ppRender(); };
+  $("ppDays") && ($("ppDays").onchange = e => { PP.days = +e.target.value; ppRender(); });
+  $("ppGo").onclick = async () => { if (PP.busy) return; PP.busy = true; try { await ppGather(true); } catch (e) { $("ppMsg").innerHTML = `<span class="up">${escH(e.message || e)}</span>`; } PP.busy = false; ppRender(); };
+  $("ppDl").onclick = ppDownload;
+}
+async function ppDownload() {
+  const g = PP.g; if (!g) return; await needXLSX(); const wb = XLSX.utils.book_new(), stamp = iso(new Date()), add = (n, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), n);
+  const src = [["Sources"], ["Beyond posted prices: Beyond API (read-only), captured " + (g.capBeyond || "")], ["Our reservations: Track API (read-only)"], ["Comp nightly rates + open nights: AirROI (Airbnb) / KeyData (VRBO)"], [`Our posted price is put on the comps' Airbnb basis with x${PP_BASIS}. Comp booked % includes their owner blocks. ESTIMATE.`]];
+  if (PP.tab === "daily") { const ks = ppRange(g, g.today, PP.days); add("Daily pricing", [["Neighborhood", "Home", ...ks], ...ppHomes(g).map(h => [h.set, h.name, ...ks.map(k => { const n = g.N[h.id]?.[k]; return n ? (n.kind === "guest" ? "Booked " + Math.round(n.rent || 0) : n.kind === "owner" ? "Owner" : "Blocked") : ppPosted(g, h.id, k); })])]);
+    add("Comp nightly", [["Neighborhood", ...ks], ...[...new Set(ppHomes(g).map(h => h.set_id))].map(sid => [g.setName[sid], ...ks.map(k => g.CD[sid]?.[k]?.adr != null ? Math.round(g.CD[sid][k].adr) : "")])]); }
+  if (PP.tab === "season") { ppSeason(g); add("Season review", [["Neighborhood", "Home", "Season", "Booked %", "Comps booked %", "Booked ADR", "Posted (open nights)", "Comp nightly", "Gap", "Action", "Why"], ...PP.seasonRows.map(z => [z.x.set, z.x.name, z.n, z.s.fill, z.s.cFill, z.s.adr, z.s.post, z.s.cAdr, z.s.gap, z.act.replace(/^\S+ /, ""), z.why])]); }
+  if (PP.tab === "pace" || PP.tab === "chan") { const t = document.querySelector("#ppBody table"); add(PP.tab === "pace" ? "Pace" : "Channel mix", [...t.rows].map(r => [...r.cells].map(c => c.innerText))); }
+  if (PP.tab === "perf") { ppPerf(g); add("Unit performance", [["Rank", "Neighborhood", "Home", "Bedrooms", "Booked % last 90", "ADR last 90", "RevPAR last 90", "Rent last 90", "Rent YTD", "Booked % next 90", "Rent next 90", "Owner nights next 90", "Avg stay", "Days booked ahead", "AI score"], ...PP.perfRows.map(r => [r.rank, r.x.set, r.x.name, r.x.bedrooms, r.p.fill, r.p.adr, r.p.revpar, r.p.rent, r.ytd, r.n.fill, r.n.rent, r.n.own, r.los, r.lead, r.ai])]); }
+  if (PP.tab === "mkt") { ppVsMkt(g); add("Unit vs market", [["Neighborhood", "Home", "Booked % next 30", "Comps booked % next 30", "Our price (Airbnb basis) next 30", "Comp nightly next 30", "Gap next 30", "Flag next 30", "Suggested next 30", "Booked % 31-60", "Comps booked % 31-60", "Our price 31-60", "Comp nightly 31-60", "Gap 31-60", "Flag 31-60"], ...PP.mktRows.map(r => [r.x.set, r.x.name, r.a.fill, r.a.cFill, r.a.postAb, r.a.cAdr, r.a.gap, r.fa === "🔴" ? "NOT BOOKING" : r.fa === "🟡" ? "PRICED LOW" : "", r.aa, r.b.fill, r.b.cFill, r.b.postAb, r.b.cAdr, r.b.gap, r.fb === "🔴" ? "NOT BOOKING" : r.fb === "🟡" ? "PRICED LOW" : ""])]); }
+  add("Sources", src);
+  XLSX.writeFile(wb, `MM-${PP.tab}-report-INTERNAL-${stamp}.xlsx`);
+}
+// ===== Beyond Pricing tab (Brandon 2026-10-20): check our pricing + what to bring up with Kolleen this week.
+// Internal list shows why (comp data); the copy-out talking points carry rates only (Brandon's rule: Kolleen never sees comp data).
+const r5k = v => Math.round(v / 5) * 5;
+function kolCheck(g) {
+  const T = g.today, w1 = ppRange(g, T, 30), w2 = ppRange(g, addD(T, 30), 30), items = [];
+  const effMin = (id, k) => { const b = g.BY[id]; if (!b) return null; const off = Math.round((new Date(k + "T12:00:00") - new Date(b.start_date + "T12:00:00")) / 864e5); return off >= 0 ? b.eff_min?.[off] ?? null : null; };
+  for (const x of g.homes) {
+    for (const [lab, ks] of [["next 30 days", w1], ["days 31–60", w2]]) { const s = ppStats(g, x, ks);
+      if (s.gap == null || s.fill == null || s.cFill == null || s.post == null) continue;
+      if (s.fill < s.cFill - 0.15 && s.gap > 0.05) { const nu = r5k(s.post * (1 - Math.min(s.gap, 0.25)));
+        items.push({ p: 1, type: "🔴 Lower (not booking)", x, lab, ask: `${x.name} (${x.set}), ${lab}: lower open nights from about ${fmt(s.post)} to about ${fmt(nu)} a night.`, why: `booked ${ppFillPct(s.fill)} vs comps ${ppFillPct(s.cFill)}; priced ${ppPct(s.gap)} above comps` }); }
+      else if (s.fill > s.cFill + 0.15 && s.gap < -0.05) { const nu = r5k(s.post * (1 + Math.min(-s.gap, 0.25)));
+        items.push({ p: 2, type: "🟡 Raise (filling fast, priced low)", x, lab, ask: `${x.name} (${x.set}), ${lab}: raise open nights from about ${fmt(s.post)} to about ${fmt(nu)} a night.`, why: `booked ${ppFillPct(s.fill)} vs comps ${ppFillPct(s.cFill)}; priced ${ppPct(s.gap)} below comps` }); } }
+    const open = w1.filter(k => !g.N[x.id]?.[k] && ppPosted(g, x.id, k) != null), atMin = open.filter(k => effMin(x.id, k) != null && +ppPosted(g, x.id, k) <= +effMin(x.id, k));
+    if (atMin.length >= 10) { const s = ppStats(g, x, w1); if (s.gap != null && s.gap > 0.10 && s.fill != null && s.cFill != null && s.fill < s.cFill)
+      items.push({ p: 3, type: "⛔ Beyond minimum holding the price up", x, lab: "next 30 days", ask: `${x.name} (${x.set}): the Beyond minimum price (about ${fmt(rAvg(atMin.map(k => +effMin(x.id, k))))}) is setting the rate on ${atMin.length} open nights in the next 30. Can the minimum come down, or is it an owner floor?`, why: `posted at the minimum on ${atMin.length} of ${open.length} open nights; still ${ppPct(s.gap)} above comps and booking behind (${ppFillPct(s.fill)} vs ${ppFillPct(s.cFill)})` }); }
+    const peak = ppRange(g, T, 120).filter(k => peakOf(k) && !g.N[x.id]?.[k] && ppPosted(g, x.id, k) != null);
+    const low = peak.filter(k => { const c = g.CD[x.set_id]?.[k]; return c?.adr && +ppPosted(g, x.id, k) * PP_BASIS < c.adr; });
+    if (low.length >= 2) { const names = [...new Set(low.map(peakOf))].join(", "), post = rAvg(low.map(k => +ppPosted(g, x.id, k))), comp = rAvg(low.map(k => g.CD[x.set_id][k].adr));
+      items.push({ p: 2, type: "🎄 Holiday / event nights priced low", x, lab: names, ask: `${x.name} (${x.set}): raise open ${names} nights (${low.length} nights) from about ${fmt(post)} to at least ${fmt(r5k(comp / PP_BASIS * 1.1))} a night, and hold them until 7 days out.`, why: `our posted ${fmt(post * PP_BASIS)} (Airbnb basis) vs comps ${fmt(comp)} on those nights; holidays should sit at the top of the market` }); }
+  }
+  for (const b of g.B.filter(b => b.kind === "guest" && (b.booked_at || "").slice(0, 10) >= addD(T, -7) && b.nights && b.nights < 28)) {
+    const x = g.homes.find(h => h.id === b.comp_id); if (!x) continue; const c = []; for (let k = b.arrival; k < b.departure; k = addD(k, 1)) { const d = g.CD[x.set_id]?.[k]; if (d?.adr) c.push(d.adr); }
+    if (c.length < b.nights / 2) continue; const mult = /airbnb|\babb\b|vrbo|homeaway/i.test(b.channel || "") ? 1.375 : PP_BASIS, ours = (+b.gross_rent / b.nights) * mult, gap = ours / rAvg(c) - 1;
+    if (gap <= -0.15) items.push({ p: 2, type: "🟡 Booked too low this week", x, lab: `${b.arrival} → ${b.departure}`, ask: `${x.name} (${x.set}) booked ${b.arrival} → ${b.departure} at ${fmt(b.gross_rent / b.nights)} a night. Raise similar open dates for this home.`, why: `${ppPct(gap)} vs comps for the same nights (${b.channel || "guest"})` });
+  }
+  const yAgo = addD(T, -364), G = g.B.filter(b => b.kind === "guest"), nightsIn = (b, m) => { let n = 0; for (let k = b.arrival; k < b.departure; k = addD(k, 1)) if (k.slice(0, 7) === m) n++; return n; };
+  const d0 = new Date(T + "T12:00"); for (let i = 0; i < 4; i++) { const m = new Date(d0.getFullYear(), d0.getMonth() + i, 1).toISOString().slice(0, 7), [yy, mm] = m.split("-"), ly = `${+yy - 1}-${mm}`;
+    let a = 0, l = 0; for (const b of G) { a += nightsIn(b, m); if ((b.booked_at || "").slice(0, 10) <= yAgo) l += nightsIn(b, ly); }
+    if (l >= 30 && a / l - 1 <= -0.10) items.push({ p: 4, type: "📉 Pace behind last year", x: null, lab: m, ask: `${new Date(m + "-15").toLocaleDateString(undefined, { month: "long" })} is ${ppPct(a / l - 1)} behind last year in booked nights. What is Beyond doing for that month?`, why: `${a} nights on the books vs ${l} on the same day last year (all homes)` }); }
+  return items.sort((a, b) => a.p - b.p);
+}
+function kolRender() {
+  const el = $("kolOut"); if (!el) return; const g = PP.g;
+  if (!g) { el.innerHTML = `<div class="rrow"><button class="tab on" id="kolGo">Run the pricing check (about 30 seconds)</button><span id="kolRunMsg" class="small muted"></span></div>`;
+    $("kolGo").onclick = async () => { $("kolGo").disabled = true; try { await ppGather(true); } catch (e) { $("kolRunMsg").textContent = e.message || e; } kolRender(); }; return; }
+  const items = kolCheck(g), types = [...new Set(items.map(i => i.type))];
+  const text = `Hi Kolleen, a few things for this week:\n\n` + items.map((i, n) => `${n + 1}. ${i.ask}`).join("\n") + `\n\nThanks!`;
+  el.innerHTML = `<p class="small">${items.length ? `<b>${items.length} things to bring up</b> · ${types.map(t => `${t.split(" ")[0]} ${items.filter(i => i.type === t).length}`).join(" · ")}` : "Nothing stands out this week."} <span class="muted">· data from ${new Date(g.t).toLocaleTimeString()} · Beyond prices captured ${g.capBeyond ? new Date(g.capBeyond).toLocaleString() : "—"}</span> <button class="tab" id="kolRe" style="padding:2px 10px">Re-check</button></p>
+    ${types.map(t => `<h4 style="margin:10px 0 4px">${escH(t)}</h4><ul class="small" style="margin:0;padding-left:18px">${items.filter(i => i.type === t).map(i => `<li>${escH(i.ask)} <span class="muted">· why: ${escH(i.why)}</span></li>`).join("")}</ul>`).join("")}
+    ${items.length ? `<h4 style="margin:14px 0 4px">📋 Talking points for Kolleen <span class="small muted">(rates only, no comp data; edit before sending)</span></h4><textarea id="kolText" rows="${Math.min(18, items.length + 5)}" style="width:100%;font:13px/1.4 inherit">${escH(text)}</textarea><div class="rrow"><button class="tab on" id="kolCopy">Copy talking points</button><span id="kolMsg" class="small muted"></span></div>` : ""}
+    <p class="small muted" style="margin:6px 0 0">Checks: 🔴 booking 15+ points slower than comps and 5%+ above them (next 30 and days 31–60) · 🟡 booking 15+ points faster and 5%+ below · ⛔ Beyond's minimum price setting the rate on 10+ open nights while we sit 10%+ above comps · 🎄 open holiday/event nights (next 120 days) priced under the comp average · 🟡 reservations made in the last 7 days 15%+ under comps · 📉 months 10%+ behind last year. Suggested moves capped at 25%. Our posted price is compared on the Airbnb basis (×${PP_BASIS}). Sources: Beyond posted prices (Beyond API, read-only), our reservations (Track, read-only), comp nightly rates (AirROI / KeyData). ESTIMATE.</p>`;
+  $("kolRe").onclick = async () => { await ppGather(true); kolRender(); };
+  $("kolCopy") && ($("kolCopy").onclick = async () => { try { await navigator.clipboard.writeText($("kolText").value); $("kolMsg").textContent = "Copied ✓"; } catch (e) { $("kolText").select(); $("kolMsg").textContent = "Press Ctrl+C to copy"; } });
+}
+
+// ===== Reports index, laid out like Track's Reports page (Brandon 2026-10-20): tabs on top, open columns of report links.
+const RP_IDX = [
+  ["Pricing & Performance", [
+    ["Pricing", [["pp:daily", "Daily Pricing by Unit"], ["pp:season", "Season Pricing Review"], ["pp:mkt", "Unit vs Market"], ["hol", "Holiday / Date-Range Check"]]],
+    ["Reservations", [["pp:pace", "Reservation Pace"], ["bk", "Booked Too Low / Great Bookings"], ["pp:chan", "Channel Mix"]]],
+    ["Units", [["pp:perf", "Unit Performance"], ["owner", "Owner Report"], ["rater", "Home Rankings (Home Rater)"]]],
+    ["Data", [["src", "Data Updated & Sources"]]]]],
+  ["OTA / Channels", [
+    ["Airbnb", [["ab", "Airbnb Search Rank (our homes)"], ["ab", "Comp Price Cuts"], ["pp:daily", "Daily Pricing vs Airbnb Comps"]]],
+    ["VRBO / Booking.com", [["pp:chan", "Bookings by Channel"], ["bk", "Booked Too Low by Channel"]]],
+    ["Direct / Google", [["pulse:Google: our direct site", "Google Rank of Our Site + Ads"], ["pulse:Google vacation rentals", "Google Vacation Rentals"], ["pulse:Property managers", "Manager Reviews (Google Maps)"]]]]],
+  ["Market (SerpApi & more)", [
+    ["Demand", [["pulse:Google searches", "Google Search Trends"], ["pulse:Trending in Utah", "Utah Trending Searches"], ["pulse:Flights into SLC", "Flights into SLC"], ["pulse:Events that bring", "PredictHQ Events + Event Demand"], ["pulse:Upcoming events", "Local Events"]]],
+    ["Competition", [["hotels", "Hotel Rates (Park City + Heber)"], ["pulse:Short-term rental market", "STR Market (PriceLabs)"], ["pulse:Property managers", "Manager Reviews"]]],
+    ["Conditions", [["pulse:Drive time", "Drive Time from SLC"], ["pulse:News", "Park City News"], ["pulse:Stock markets", "Stock Markets"], ["pulse:Currencies", "Currencies"]]]]]];
+function rpIndexHtml() {
+  const c = RP.cat ?? 0;
+  return `<div class="rpbar">${RP_IDX.map(([t], i) => `<button class="${i === c ? "on" : ""}" data-cat="${i}">${escH(t)}</button>`).join("")}</div>
+    <div class="rpcols">${RP_IDX[c][1].map(([g, links]) => `<div><h3>${escH(g)}</h3>${links.map(([k, n]) => `<a href="#" data-rpk="${escH(k)}">${escH(n)}</a>`).join("")}</div>`).join("")}</div>`;
+}
+function rpIndexWire() {
+  const B = $("reportsBody"), idx = $("rpIndex"); if (!idx) return;
+  idx.innerHTML = rpIndexHtml();
+  idx.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { RP.cat = +b.dataset.cat; rpIndexWire(); });
+  idx.querySelectorAll("[data-rpk]").forEach(a => a.onclick = e => { e.preventDefault(); rpOpen(a.dataset.rpk, a.textContent); });
+  $("rpBack").onclick = e => { e.preventDefault(); rpOpen(null); };
+  if (RP.open) rpOpen(RP.open, RP.openName); }
+function rpOpen(k, name) {
+  const B = $("reportsBody");
+  if (k && k.startsWith("pulse:")) { const want = k.slice(6); setView("pulse"); let n = 0; const t = setInterval(() => { const h = [...document.querySelectorAll("#pulseBody h3")].find(x => x.textContent.includes(want)); if (h || ++n > 40) { clearInterval(t); h?.scrollIntoView({ behavior: "smooth", block: "start" }); } }, 250); return; }
+  if (k === "hotels") return setView("hotels");
+  if (k === "rater") { setView("rater"); return rSub("rank"); }
+  RP.open = k; RP.openName = name;
+  B.classList.toggle("one", !!k); $("rpOpenName").textContent = name || "";
+  B.querySelectorAll(".rpsec").forEach(s => s.classList.toggle("show", !!k && s.dataset.rp === (k.startsWith("pp:") ? "pp" : k)));
+  if (k?.startsWith("pp:")) { PP.tab = k.slice(3); ppRender(); }
+  window.scrollTo(0, 0);
 }
 // 2026-10-20: Airbnb search rank of our homes + comp price drops (from airbnb_searches, SerpApi Airbnb search).
 function abSearchUrl(s) { const [n, e, so, w] = (s.bounds || "").split(",");
