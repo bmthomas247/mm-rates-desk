@@ -1204,7 +1204,7 @@ const PULSE_AREAS = [
 const NEWS_FLAG = /clos|storm|snow|opening|open(s|ing)? (day|date)|delay|fire|avalanche|crash|road|strike|lift|record|cancel|outage|evacuat|construction|price|sale|sold/i;
 function renderPulse() {
   const P = state.pulse; if (!P) return;
-  const out = [];
+  const out = [pcmHtml()];
   // --- Google Trends: last 4 weeks vs the same 4 weeks last year ---
   const T = {}; for (const r of P.trends) { (T[r.series] ||= []).push(r); }
   const geos = ["United States", "California", "Texas", "New York", "Australia"], qs = ["Park City", "Deer Valley", "Park City Mountain", "Park City lodging", "Park City ski"];
@@ -1326,6 +1326,82 @@ function renderPulse() {
     out.push(`<h3>🎟️ Upcoming events</h3><ul class="small" style="margin:0;padding-left:18px">${ev.slice(0, 25).map(e => `<li><b>${escH(e.extra?.when || e.extra?.start || "")}</b> · <a href="${escH(e.url)}" target="_blank" rel="noopener">${escH(e.label)}</a> <span class="muted">· ${escH(e.extra?.venue || "")} · ${/heber/i.test(e.series) ? "Heber" : "Park City"}</span></li>`).join("")}</ul>${srcLine("Google Events via SerpApi", null)}`);
   }
   $("pulseBody").innerHTML = out.map(s => `<section style="margin-bottom:18px">${s}</section>`).join("");
+  pcmWire();
+}
+// ===== Park City market (Brandon 2026-10-21): Park City ADR + bookings, filter by area, channel and bedrooms. =====
+// Source: KeyData API (read-only) - market KPIs (kd_market_kpis, monthly, history + on the books) and listing performance
+// (kd_market_listings, last 12 / next 6 months). KeyData ADR = nightly rent only, no cleaning or other fees (Cathy, KeyData, 2026-10-21).
+// Market KPIs don't split by bedrooms, so picking a bedroom count switches to the listing numbers (by town).
+const PCM = { area: "Park City Area", ch: "both", town: "Park City", bd: "all", mon: {}, lst: null, busy: false };
+const pcmPct = v => v == null || isNaN(v) ? "—" : Math.round(v * 100) + "%";
+const pcmMid = a => { a = a.filter(v => v != null && !isNaN(v)).sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : null; };
+function pcmHtml() {
+  return `<h3>🏔️ Park City market: ADR + bookings (KeyData)</h3><p class="small muted" style="margin:0 0 6px">Whole-market numbers, not just our comps. ADR = nightly rent only (no cleaning or fees). Future months = on the books when KeyData was pulled, so they fill in as dates get closer.</p>
+  <div class="small" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+  <label>Area <select id="pcmArea"></select></label><label>Channel <select id="pcmCh"><option value="both">Airbnb + VRBO</option><option value="airbnb">Airbnb</option><option value="vrbo">VRBO</option></select></label>
+  <label>Bedrooms <select id="pcmBd"><option value="all">All</option>${[0, 1, 2, 3, 4, 5, 6, 7].map(b => `<option value="${b}">${b === 0 ? "Studio" : b === 7 ? "7+" : b}</option>`).join("")}</select></label>
+  <label id="pcmTownL">Town <select id="pcmTown"></select></label></div><div id="pcmOut"><p class="small muted">Loading KeyData market numbers…</p></div>`;
+}
+async function pcmWire() {
+  const el = $("pcmArea"); if (!el) return;
+  if (!PCM.areas) { const r = await sb.from("kd_market_kpis").select("market_name").eq("time_scale", "month").eq("ota", "airbnb").eq("date", "2026-01-01").limit(200); PCM.areas = [...new Set((r.data || []).map(x => x.market_name))].sort(); }
+  el.innerHTML = PCM.areas.map(a => `<option ${a === PCM.area ? "selected" : ""}>${escH(a)}</option>`).join("");
+  $("pcmCh").value = PCM.ch; $("pcmBd").value = PCM.bd;
+  el.onchange = () => { PCM.area = el.value; pcmRender(); }; $("pcmCh").onchange = e => { PCM.ch = e.target.value; pcmRender(); };
+  $("pcmBd").onchange = e => { PCM.bd = e.target.value; pcmRender(); };
+  pcmRender();
+}
+async function pcmRender() {
+  const out = $("pcmOut"); if (!out) return;
+  $("pcmTownL").style.display = PCM.bd === "all" ? "none" : "";
+  const otas = PCM.ch === "both" ? ["airbnb", "vrbo"] : [PCM.ch];
+  if (PCM.bd === "all") {
+    // ---- monthly market KPIs for the area ----
+    if (!PCM.mon[PCM.area]) { out.innerHTML = `<p class="small muted">Loading ${escH(PCM.area)}…</p>`;
+      const r = await allRows(() => sb.from("kd_market_kpis").select("ota,date,listing_count,adr,guest_occupancy,revenue_rent,avg_booking_window,avg_stay_length,captured_at,gn:raw->guest_nights,an:raw->available_nights,ci:raw->guest_checkins,upd:raw->updated_on", { count: "exact" })
+        .eq("market_name", PCM.area).eq("time_scale", "month").order("date"));
+      PCM.mon[PCM.area] = r.data || []; }
+    const rows = PCM.mon[PCM.area].filter(r => otas.includes(r.ota)); if (!rows.length) { out.innerHTML = `<p class="small muted">No KeyData numbers for ${escH(PCM.area)}.</p>`; return; }
+    const M = {}; for (const r of rows) { const o = M[r.date] ||= { rev: 0, gn: 0, an: 0, ci: 0, n: 0, bw: [], st: [] };
+      const gn = +r.gn || (r.guest_occupancy && r.an ? r.guest_occupancy * r.an : 0), rev = +r.revenue_rent || (r.adr || 0) * gn;
+      o.rev += rev; o.gn += gn; o.an += +r.an || 0; o.ci += +r.ci || 0; o.n += +r.listing_count || 0; if (r.avg_booking_window) o.bw.push([+r.avg_booking_window, gn]); if (r.avg_stay_length) o.st.push([+r.avg_stay_length, gn]); }
+    const wavg = a => { const w = a.reduce((s, x) => s + x[1], 0); return w ? a.reduce((s, x) => s + x[0] * x[1], 0) / w : null; };
+    const val = d => { const o = M[d]; return o ? { adr: o.gn ? o.rev / o.gn : null, occ: o.an ? o.gn / o.an : null, gn: o.gn, ci: o.ci, n: o.n, bw: wavg(o.bw), st: wavg(o.st), rev: o.rev } : null; };
+    const cap = rows.reduce((m, r) => r.captured_at > m ? r.captured_at : m, ""), capD = cap.slice(0, 10), now = new Date(), thisM = iso(new Date(now.getFullYear(), now.getMonth(), 1));
+    const lyOf = d => (+d.slice(0, 4) - 1) + d.slice(4);
+    const months = Object.keys(M).sort().filter(d => d >= lyOf(thisM) && d <= iso(new Date(now.getFullYear(), now.getMonth() + 6, 1)));
+    const sum = (a, b) => { const ds = Object.keys(M).filter(d => d >= a && d < b); let rev = 0, gn = 0, an = 0; for (const d of ds) { rev += M[d].rev; gn += M[d].gn; an += M[d].an; } return { adr: gn ? rev / gn : null, occ: an ? gn / an : null }; };
+    const nxt = sum(thisM, iso(new Date(now.getFullYear(), now.getMonth() + 3, 1))), nly = sum(lyOf(thisM), lyOf(iso(new Date(now.getFullYear(), now.getMonth() + 3, 1))));
+    const l12 = sum(iso(new Date(now.getFullYear() - 1, now.getMonth(), 1)), thisM), p12 = sum(iso(new Date(now.getFullYear() - 2, now.getMonth(), 1)), iso(new Date(now.getFullYear() - 1, now.getMonth(), 1)));
+    const ch = (a, b) => a == null || !b ? null : (a / b - 1) * 100, pts = (a, b) => a == null || b == null ? `<span class="muted">—</span>` : `<b style="color:var(${a >= b ? "--green" : "--red"})">${a >= b ? "▲" : "▼"} ${Math.abs(Math.round((a - b) * 100))} pts</b>`;
+    const tile = (t, v, ly) => `<div class="card" style="padding:8px 12px;margin:0;min-width:180px"><div class="small muted">${t}</div><div><b>${fmt(v.adr)}</b> ADR ${upDn(ch(v.adr, ly.adr))}</div><div><b>${pcmPct(v.occ)}</b> booked ${pts(v.occ, ly.occ)}</div></div>`;
+    const tr = months.map(d => { const v = val(d), ly = val(lyOf(d)), fut = d >= thisM.slice(0, 8) + "01" && d >= thisM;
+      return `<tr${fut ? ` style="background:var(--soft,rgba(0,0,0,.03))"` : ""}><td>${new Date(d + "T12:00").toLocaleString(undefined, { month: "short", year: "numeric" })}${fut ? ` <span class="muted">on books</span>` : ""}</td><td>${fmt(v.adr)}</td><td>${ly ? upDn(ch(v.adr, ly.adr)) : "—"}</td><td>${pcmPct(v.occ)}</td><td>${ly ? pts(v.occ, ly.occ) : "—"}</td><td>${Math.round(v.gn).toLocaleString()}</td><td>${v.ci ? Math.round(v.ci).toLocaleString() : "—"}</td><td>${v.n.toLocaleString()}</td><td>${v.bw ? Math.round(v.bw) + " d" : "—"}</td><td>${v.st ? v.st.toFixed(1) : "—"}</td></tr>`; }).join("");
+    out.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${tile("Next 3 months, on the books vs LY final", nxt, nly)}${tile("Last 12 months vs the 12 before", l12, p12)}</div>
+      <div class="wrap"><table class="small"><tr><th style="text-align:left">Month</th><th>ADR</th><th>vs LY</th><th>Booked</th><th>vs LY</th><th>Nights booked</th><th>Bookings (check-ins)</th><th>Listings</th><th>Booked ahead</th><th>Avg stay</th></tr>${tr}</table></div>
+      <p class="small muted" style="margin:4px 0 0">Booked = guest nights ÷ available nights (owner and blocked nights left out). Future months are on the books as of ${capD} compared with last year's final, so they look low until the dates get closer. ESTIMATE.</p>
+      ${srcLine(`KeyData API, market "${PCM.area}", ${PCM.ch === "both" ? "Airbnb + VRBO" : PCM.ch === "airbnb" ? "Airbnb" : "VRBO"}, monthly, pulled ${capD}`, "https://www.keydatadashboard.com")}`;
+    return;
+  }
+  // ---- bedroom split: listing performance (last 12 / next 6 months) ----
+  if (!PCM.lst) { out.innerHTML = `<p class="small muted">Loading 13,000 KeyData listings…</p>`;
+    const r = await allRows(() => sb.from("kd_market_listings").select("listing_id,ota,bedrooms,captured_at,city:raw->geo->>city,la:raw->performance->last_12_months->>adr,lr:raw->performance->last_12_months->>revenue,lg:raw->performance->last_12_months->>guest_nights,lv:raw->performance->last_12_months->>available_nights,na:raw->performance->next_6_months->>adr,ng:raw->performance->next_6_months->>guest_nights,nv:raw->performance->next_6_months->>available_nights,nw:raw->performance->next_6_months->>avg_booking_window,pu:raw->performance->>performance_updated_on", { count: "exact" }).order("captured_at", { ascending: false }));
+    const seen = new Set(); PCM.lst = (r.data || []).filter(x => !seen.has(x.listing_id) && seen.add(x.listing_id));
+    const cc = {}; for (const x of PCM.lst) if (x.city) cc[x.city] = (cc[x.city] || 0) + 1; PCM.towns = Object.entries(cc).filter(e => e[1] >= 20).sort((a, b) => b[1] - a[1]).map(e => e[0]); }
+  const tw = $("pcmTown"); tw.innerHTML = [["*", "All towns"], ...PCM.towns.map(t => [t, t])].map(([v, l]) => `<option value="${escH(v)}" ${v === PCM.town ? "selected" : ""}>${escH(l)}</option>`).join(""); tw.onchange = () => { PCM.town = tw.value; pcmRender(); };
+  const bdOk = x => { const b = +x.bedrooms; return PCM.bd === "7" ? b >= 7 : b === +PCM.bd; };
+  const L = PCM.lst.filter(x => otas.includes(x.ota) && bdOk(x));
+  const agg = a => { const s = k => a.reduce((t, x) => t + (+x[k] || 0), 0), lg = s("lg"), ng = s("ng");
+    return { n: a.length, la: lg ? a.reduce((t, x) => t + (+x.la || 0) * (+x.lg || 0), 0) / lg : null, lo: s("lv") ? lg / s("lv") : null, rev: pcmMid(a.map(x => +x.lr || null)),
+      na: ng ? a.reduce((t, x) => t + (+x.na || 0) * (+x.ng || 0), 0) / ng : null, no: s("nv") ? ng / s("nv") : null, bw: pcmMid(a.map(x => +x.nw || null)) }; };
+  const groups = PCM.town === "*" ? PCM.towns.map(t => [t, L.filter(x => x.city === t)]) : [[PCM.town, L.filter(x => x.city === PCM.town)]];
+  const all = agg(groups.flatMap(g => g[1]));
+  const row = (lab, v, b) => `<tr${b ? ` style="font-weight:600"` : ""}><td>${escH(lab)}</td><td>${v.n.toLocaleString()}</td><td>${fmt(v.la)}</td><td>${pcmPct(v.lo)}</td><td>${fmt(v.rev)}</td><td>${fmt(v.na)}</td><td>${pcmPct(v.no)}</td><td>${v.bw ? Math.round(v.bw) + " d" : "—"}</td></tr>`;
+  const bl = PCM.bd === "0" ? "Studio" : PCM.bd === "7" ? "7+ bedroom" : PCM.bd + " bedroom", cap = (PCM.lst[0]?.captured_at || "").slice(0, 10), pu = pcmMid(PCM.lst.map(x => x.pu).filter(Boolean).map(d => +new Date(d)));
+  out.innerHTML = `<div class="wrap"><table class="small"><tr><th style="text-align:left">${PCM.town === "*" ? "Town" : "Town"}</th><th>Listings</th><th>ADR, last 12 mo</th><th>Booked, last 12 mo</th><th>Median revenue, last 12 mo</th><th>ADR, next 6 mo (on books)</th><th>Booked, next 6 mo (on books)</th><th>Booked ahead</th></tr>
+    ${groups.filter(g => g[1].length).map(([t, a]) => row(t, agg(a))).join("")}${groups.length > 1 ? row("All towns", all, true) : ""}</table></div>
+    <p class="small muted" style="margin:4px 0 0">${escH(bl)} homes, ${PCM.ch === "both" ? "Airbnb + VRBO (a home on both counts twice)" : PCM.ch === "airbnb" ? "Airbnb" : "VRBO"}. KeyData doesn't split its area numbers by bedrooms, so this uses each listing's own numbers, grouped by the town on the listing. Booked = guest nights ÷ available nights. ESTIMATE.</p>
+    ${srcLine(`KeyData API listing performance, pulled ${cap}${pu ? `, KeyData last updated ${new Date(pu).toISOString().slice(0, 10)}` : ""}`, "https://www.keydatadashboard.com")}`;
 }
 // ===== Reports (Brandon 2026-10-20): booking quality across all homes, owner report, holiday check. All ESTIMATE. =====
 const RP = { bk: null, hol: null, busy: false };
@@ -1373,6 +1449,7 @@ const FEEDS = [ // [name, what it gives us, table, time column, filter [col, val
   ["Our Google rank + ads", "Where our site ranks for rental searches (Mondays)", "market_signals", "captured_at", ["source", "google_rank"], 8, "Google Search via SerpApi", "https://www.google.com"],
   ["Manager reviews", "Google Maps rating + reviews for us and 14 managers (Mondays)", "market_signals", "captured_at", ["source", "manager_reviews"], 8, "Google Maps via SerpApi", "https://www.google.com/maps"],
   ["Google vacation rentals", "Park City rentals shown on Google, 2–6BR (Wednesdays)", "market_signals", "captured_at", ["source", "google_vr"], 8, "Google Hotels (vacation rentals) via SerpApi", "https://www.google.com/travel"],
+  ["Park City market (KeyData)", "Park City ADR + bookings by area / bedrooms (API test pull; refresh when the KeyData key arrives)", "kd_market_kpis", "captured_at", null, 30, "KeyData API", "https://www.keydatadashboard.com"],
   ["Short-term rental market", "Utah occupancy + ADR (Sundays)", "market_signals", "captured_at", ["source", "pricelabs"], 8, "PriceLabs (weekly pull)", "https://app.pricelabs.co"],
   ["AI home scores", "Claude's score from listing photos + Track amenities", "home_ai", "scored_at", null, 60, "Airbnb listing photos + Track amenities", null],
   ["Staff home scores", "Home Rater scores from our team", "home_ratings", "created_at", null, 30, "Home Rater (Desk)", null]];
@@ -1718,7 +1795,7 @@ const RP_IDX = [
     ["All channels", [["pp:chan", "Channel Mix"]]]]],
   ["Market (SerpApi & more)", [
     ["Demand", [["pulse:Google searches", "Google Search Trends"], ["pulse:Trending in Utah", "Utah Trending Searches"], ["pulse:Flights into SLC", "Flights into SLC"], ["pulse:Events that bring", "PredictHQ Events + Event Demand"], ["pulse:Upcoming events", "Local Events"]]],
-    ["Competition", [["hotels", "Hotel Rates (Park City + Heber)"], ["pulse:Short-term rental market", "STR Market (PriceLabs)"], ["pulse:Property managers", "Manager Reviews"]]],
+    ["Competition", [["hotels", "Hotel Rates (Park City + Heber)"], ["pulse:Park City market", "Park City Market: ADR + Bookings (KeyData)"], ["pulse:Short-term rental market", "STR Market (PriceLabs)"], ["pulse:Property managers", "Manager Reviews"]]],
     ["Conditions", [["pulse:Drive time", "Drive Time from SLC"], ["pulse:News", "Park City News"], ["pulse:Stock markets", "Stock Markets"], ["pulse:Currencies", "Currencies"]]]]]];
 function rpIndexHtml() {
   const c = RP.cat ?? 0;
