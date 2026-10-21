@@ -1776,14 +1776,16 @@ function kolCheck(g) {
 }
 // ===== Our price vs Beyond (Brandon 2026-10-21): shadow pricing from shadow_price.py, night by night next to Beyond's posted
 // price. Shadow only - nothing here is sent to Beyond or Track. Every number is an ESTIMATE.
-const OVB = { d: null, busy: false, sid: "*", q: "", open: null, win: 90 };
+const OVB = { d: null, busy: false, sid: "*", q: "", open: null, win: 90, sk: "gapabs", dir: -1 };
 const OVB_WHY = [[/^M/, "Ski season: middle of the comps"], [/^O/, "Off-season: low end of comps that actually booked"],
   [/^o/, "Off-season: low end of open comps (not enough booked comps yet)"], [/^h14/, "Holiday, 8–14 days out and open: upper comps (75th pct)"],
   [/^h7/, "Holiday, last week and open: normal ski-season rate so it books"], [/^H/, "Holiday / event: top of the comps (90th pct)"], [/^x/, "Not enough priced comps"]];
 const ovbWhy = c => { if (!c) return ""; const out = [(OVB_WHY.find(([re]) => re.test(c)) || [, c])[1]];
   if (/\+10/.test(c)) out.push("+10% comps 70%+ booked"); else if (/\+5/.test(c)) out.push("+5% comps 50%+ booked");
   if (/T/.test(c)) out.push("Thursday = halfway Wed/Fri"); const l = c.match(/L(\d+)/); if (l) out.push(`last-minute −${l[1]}%`);
-  if (/W/.test(c)) out.push("held at damage guard"); if (/F/.test(c)) out.push("never-below floor"); return out.join(" · "); };
+  if (/W/.test(c)) out.push("held at damage guard"); if (/F/.test(c)) out.push("never-below floor");
+  if (/E/.test(c)) out.push("these dates booked 150+ days out last year: +15%"); if (/C/.test(c)) out.push("capped near what our guests actually paid"); if (/U/.test(c)) out.push("raised toward what our guests actually paid");
+  return out.join(" · "); };
 async function ovbLoad(force) {
   if (OVB.d && !force) return OVB.d;
   const last = (await sb.from("shadow_prices").select("run_id,run_date,version").order("id", { ascending: false }).limit(1)).data?.[0];
@@ -1834,13 +1836,15 @@ async function ovbRender() {
   const sets = [...new Set(D.rows.map(r => r.set))].sort();
   let rows = D.rows.filter(r => (OVB.sid === "*" || r.set === OVB.sid) && (!OVB.q || r.name.toLowerCase().includes(OVB.q.toLowerCase())))
     .map(r => ({ r, s: ovbStats(r, OVB.win) })).filter(x => x.s.n);
-  rows.sort((a, b) => Math.abs(b.s.gap) - Math.abs(a.s.gap));
+  // Sort by any column (Brandon 2026-10-21): click a header; click again to flip.
+  const key = { name: x => x.r.name, set: x => x.r.set, o: x => x.s.o, b: x => x.s.b, gap: x => x.s.gap, gapabs: x => Math.abs(x.s.gap), under: x => x.s.under, big: x => Math.abs(x.s.big?.g || 0) }[OVB.sk] || (x => Math.abs(x.s.gap));
+  rows.sort((a, b) => { const p = key(a), q = key(b); return (typeof p === "string" ? p.localeCompare(q, undefined, { numeric: true }) : (p ?? -1e18) - (q ?? -1e18)) * OVB.dir; });
   const all = D.rows.map(r => ovbStats(r, OVB.win)).filter(s => s.n), hi = all.filter(s => s.gap >= .25).length, lo = all.filter(s => s.gap <= -.25).length;
   const bcap = D.rows.map(r => r.notes?.beyond_captured_at).filter(Boolean).sort().pop();
-  el.innerHTML = `<p class="small" style="margin:0 0 6px">Next ${OVB.win} nights, ${all.length} homes: <b style="color:var(--green)">${hi}</b> where we'd charge 25%+ more than Beyond (money left on the table?) · <b style="color:var(--red)">${lo}</b> where we'd charge 25%+ less (Beyond priced too high to book?). Biggest gaps first. Click a home for every night.</p>
+  el.innerHTML = `<p class="small" style="margin:0 0 6px">Next ${OVB.win} nights, ${all.length} homes: <b style="color:var(--green)">${hi}</b> where we'd charge 25%+ more than Beyond (money left on the table?) · <b style="color:var(--red)">${lo}</b> where we'd charge 25%+ less (Beyond priced too high to book?). Biggest gaps first (click any column to sort). Click a home for every night.</p>
     <div class="small" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px"><select id="ovbSet"><option value="*">All neighborhoods</option>${sets.map(s => `<option ${s === OVB.sid ? "selected" : ""}>${escH(s)}</option>`).join("")}</select>
     <input id="ovbQ" placeholder="Find a home (e.g. PL 406)" value="${escH(OVB.q)}" style="width:180px"><select id="ovbWin">${[30, 90, 180].map(w => `<option value="${w}" ${w === OVB.win ? "selected" : ""}>Next ${w} nights</option>`).join("")}</select></div>
-    <div class="wrap"><table class="small"><tr><th style="text-align:left">Home</th><th style="text-align:left">Neighborhood</th><th>Ours (avg)</th><th>Beyond (avg)</th><th>Gap</th><th>Under Beyond min</th><th style="text-align:left">Biggest gap night</th></tr>
+    <div class="wrap"><table class="small"><tr>${[["name", "Home", 1], ["set", "Neighborhood", 1], ["o", "Ours (avg)"], ["b", "Beyond (avg)"], ["gap", "Gap"], ["under", "Under Beyond min"], ["big", "Biggest gap night", 1]].map(([k, l, left]) => `<th data-ovbsk="${k}" title="Sort" style="cursor:pointer;${left ? "text-align:left" : ""}">${l}${OVB.sk === k || (k === "gap" && OVB.sk === "gapabs") ? (OVB.dir < 0 ? " ▼" : " ▲") : ""}</th>`).join("")}</tr>
     ${rows.map(({ r, s }) => { const d = s.big ? new Date(new Date(r.start_date + "T12:00").getTime() + s.big.i * 864e5) : null;
       return `<tr class="ovbRow" data-id="${escH(r.comp_id)}" style="cursor:pointer"><td><b>${escH(r.name)}</b></td><td>${escH(r.set)}</td><td>${fmt(s.o)}</td><td>${fmt(s.b)}</td><td><b style="color:var(${s.gap >= 0 ? "--green" : "--red"})">${s.gap >= 0 ? "+" : ""}${Math.round(s.gap * 100)}%</b></td><td>${s.under || "—"}</td><td>${d ? `${d.toLocaleString(undefined, { month: "short", day: "numeric" })}: ${fmt(r.price[s.big.i])} vs ${fmt(r.beyond_posted[s.big.i])}` : "—"}</td></tr>${OVB.open === r.comp_id ? `<tr><td colspan="7">${ovbDetail(r)}</td></tr>` : ""}`; }).join("")}</table></div>
     <p class="small muted" style="margin:6px 0 0">Shadow only: nothing here is sent to Beyond or Track. Rules: PRICING-PLAYBOOK (ski season = comp middle, off-season = low end of comps that booked, holidays = top of comps, Thursday halfway, last-minute ladder, damage guard, Upper Main ≥ $250). ESTIMATE.</p>
@@ -1849,6 +1853,7 @@ async function ovbRender() {
   $("ovbWin").onchange = e => { OVB.win = +e.target.value; ovbRender(); };
   $("ovbQ").oninput = e => { OVB.q = e.target.value; clearTimeout(OVB.t); OVB.t = setTimeout(() => { ovbRender(); const q = $("ovbQ"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); };
   el.querySelectorAll(".ovbRow").forEach(tr => tr.onclick = () => { OVB.open = OVB.open === tr.dataset.id ? null : tr.dataset.id; ovbRender(); });
+  el.querySelectorAll("th[data-ovbsk]").forEach(th => th.onclick = () => { const k = th.dataset.ovbsk; if (OVB.sk === k) OVB.dir *= -1; else { OVB.sk = k; OVB.dir = ["name", "set"].includes(k) ? 1 : -1; } ovbRender(); });
 }
 function kolRender() {
   const el = $("kolOut"); if (!el) return; const g = PP.g;
