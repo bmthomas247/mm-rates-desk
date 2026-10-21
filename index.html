@@ -1342,7 +1342,7 @@ function renderReports() {
   <section class="rpsec" data-rp="ab"><h3>🔍 Airbnb search: where our homes show · 📉 comp price drops <span class="small muted">last 7 days (airbnb_search.py, nightly)</span></h3><div id="rpAbOut"></div></section>
   <section class="rpsec" data-rp="src"><h3>🕒 When the data was updated · 📚 Where it comes from</h3><div id="rpSrcOut"></div></section>
   <section class="rpsec" data-rp="owner"><h3>📄 Owner report <span class="small muted">one home, ready to share with its owner</span></h3>
-    <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a clean page you can print or save as PDF. No other owners' names; comps shown only as averages.</span></div></section>
+    <div class="rrow"><select id="rpSet">${sets.map(s => `<option value="${escH(s.id)}"${s.id === state.set?.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select><select id="rpHome"></select><button class="tab on" id="rpOwner">Open owner report</button><span class="small muted">Opens a branded page for the owner (highlights, year so far, rent by month, upcoming stays, holidays, where guests book). Print or save as PDF. No other owners' names; comps only as averages, and comparisons only appear where the home does well.</span></div></section>
   <section class="rpsec" data-rp="hol"><h3>🗓️ Holiday / date-range check <span class="small muted">internal · every home, comp-based target vs posted rate</span></h3>
     <div class="rrow"><label class="small">From <input type="date" id="rpA" value="2026-12-20"></label><label class="small">To (last night) <input type="date" id="rpB" value="2027-01-04"></label><label class="small"><input type="checkbox" id="rpPeak" checked> Holiday rules (target = comps' top, no cuts)</label><button class="tab on" id="rpRunHol">Run</button><span id="rpHolMsg" class="small muted"></span></div><div id="rpHolOut">${RP.hol ? holHtml() : ""}</div></section>`;
   const fillHomes = async () => { const sid = $("rpSet").value; const r = await sb.from("comps").select("id,label").eq("set_id", sid).eq("tier", "Ours").eq("active", true);
@@ -1520,16 +1520,116 @@ function ppChan(g) {
     return `<div class="wrap"><table class="small"><tr><th style="text-align:left">Channel</th><th>Reservations</th><th>Nights</th><th>Rent</th><th>ADR</th><th>Share of rent</th><th>Avg booked ahead</th><th style="text-align:left">Track channel names</th></tr>${Object.entries(by).sort((a, b) => b[1].rent - a[1].rent).map(([k, o]) => `<tr><td><b>${escH(k)}</b></td><td>${o.r}</td><td>${o.n}</td><td>${fmt(o.rent)}</td><td>${fmt(o.n ? o.rent / o.n : null)}</td><td>${tot ? Math.round(o.rent / tot * 100) + "%" : "—"}</td><td>${o.lead.length ? Math.round(rAvg(o.lead)) + " d" : "—"}</td><td class="muted">${escH(Object.entries(o.raw).map(([c, n]) => `${c} (${n})`).join(", "))}</td></tr>`).join("")}</table></div>`; };
   return `<h4 style="margin:6px 0 4px">Arrivals in the last 90 days</h4>${win(addD(T, -90), T)}<h4 style="margin:12px 0 4px">Arrivals in the next 90 days (on the books)</h4>${win(T, addD(T, 90))}<h4 style="margin:12px 0 4px">Same next-90 window last year</h4>${win(addD(T, -364), addD(T, -274))}<p class="small muted" style="margin:4px 0 0">Guest reservations from Track (read-only), cancelled left out. Rent = gross rent before fees; Airbnb/VRBO rent already carries our +15% channel plan. Channels grouped from Track's channel names (shown at right).</p>`;
 }
+// --- One OTA at a time (Brandon 2026-10-21: split VRBO / Booking.com / any OTA we have data on) ---
+function ppChanOne(g, ch) {
+  const T = g.today, homes = ppHomes(g), ids = new Set(homes.map(h => h.id)), G = g.B.filter(b => b.kind === "guest" && ids.has(b.comp_id));
+  const inWin = (b, a, z) => b.arrival >= a && b.arrival < z, mine = G.filter(b => ppChName(b.channel) === ch);
+  const sum = (L, a, z) => { const r = L.filter(b => inWin(b, a, z)); const rent = r.reduce((s, b) => s + (+b.gross_rent || 0), 0), n = r.reduce((s, b) => s + (b.nights || 0), 0); return { r: r.length, n, rent, adr: n ? rent / n : null }; };
+  const p90 = sum(mine, addD(T, -90), T), n90 = sum(mine, T, addD(T, 90)), all90 = sum(G, addD(T, -90), T), allN = sum(G, T, addD(T, 90)), ly = sum(mine, addD(T, -364), addD(T, -274));
+  if (!mine.length) return `<p class="small"><b>No ${escH(ch)} reservations in Track for these homes.</b> ${ch === "Booking.com" ? "We don't list on Booking.com today. Google's vacation-rental results show which sites guests are sent to (Reports → OTA → Google Vacation Rentals), including Booking.com." : ""}</p>`;
+  const tile = (l, v, s) => `<div class="tile"><span>${l}</span><b>${v}</b>${s ? `<span>${s}</span>` : ""}</div>`;
+  let h = `<div class="tiles">${tile("Rent, arrivals last 90 days", fmt(p90.rent), `${p90.r} stays · ${all90.rent ? Math.round(p90.rent / all90.rent * 100) : 0}% of all rent`)}${tile("ADR last 90", fmt(p90.adr), `all channels ${fmt(all90.adr)}`)}${tile("On the books, next 90", fmt(n90.rent), `${n90.r} stays · ${allN.rent ? Math.round(n90.rent / allN.rent * 100) : 0}% of all`)}${tile("Same next-90 last year", fmt(ly.rent), ly.rent ? ppPct(n90.rent / ly.rent - 1) + " vs LY" : "")}</div>`;
+  const rows = homes.map(x => { const L = mine.filter(b => b.comp_id === x.id), a = sum(L, addD(T, -90), T), b = sum(L, T, addD(T, 90)), tot = sum(G.filter(z => z.comp_id === x.id), addD(T, -90), addD(T, 90)), lead = L.filter(z => z.booked_at).map(z => (new Date(z.arrival) - new Date(z.booked_at)) / 864e5);
+    return { x, a, b, share: tot.rent ? (a.rent + b.rent) / tot.rent : null, lead: rAvg(lead) }; }).filter(r => r.a.r || r.b.r).sort((p, q) => (q.a.rent + q.b.rent) - (p.a.rent + p.b.rent));
+  h += `<div class="wrap" style="max-height:560px;overflow:auto"><table class="small"><tr><th style="text-align:left">Home</th><th>Stays last 90</th><th>Rent last 90</th><th>ADR last 90</th><th>Stays next 90</th><th>Rent next 90</th><th>${escH(ch)} share of rent</th><th>Booked ahead</th></tr>${rows.map(r => `<tr><td>${escH(r.x.name)}<div class="muted">${escH(r.x.set)}</div></td><td>${r.a.r}</td><td>${fmt(r.a.rent)}</td><td>${fmt(r.a.adr)}</td><td>${r.b.r}</td><td>${fmt(r.b.rent)}</td><td>${r.share == null ? "—" : Math.round(r.share * 100) + "%"}</td><td>${r.lead != null ? Math.round(r.lead) + " d" : "—"}</td></tr>`).join("")}</table></div>`;
+  return h + `<p class="small muted" style="margin:4px 0 0">${escH(ch)} guest reservations from Track (read-only), grouped from Track's channel names; cancelled left out. Rent = gross rent before fees${ch === "Airbnb" || ch === "VRBO" ? " (already includes our +15% channel plan)" : ""}.</p>`;
+}
+// --- Home rating report (Brandon 2026-10-21): staff + AI + guest scores next to price and results; flags homes priced out of line with their rating ---
+function ppRate(g) {
+  if (!RT.homes) { loadRater().then(() => { setView("reports"); ppRender(); }); return `<p class="small muted">Loading Home Rater scores…</p>`; }
+  const S = staffAgg(), { E, G } = eloAgg(), f = v => v == null ? "—" : (+v).toFixed(1), T = g.today, w30 = ppRange(g, T, 30), past = ppRange(g, addD(T, -90), 90);
+  const rows = ppHomes(g).map(x => { const s = S[x.id], a = RT.ai[x.id], staff = s?.avg.overall ?? null, n = s?.n || 0;
+    const score = staff != null ? (n >= 2 ? staff : (staff + (a?.overall ?? staff)) / 2) : a?.overall ?? null;
+    return { x, score, staff, n, ai: a?.overall ?? null, guest: a?.rating ? +a.rating : null, rev: a?.reviews || 0, elo: G[x.id] ? E[x.id] : null, post: ppStats(g, x, w30).post, revpar: ppStats(g, x, past).revpar }; });
+  const bySet = {}; for (const r of rows) (bySet[r.x.set_id] ||= []).push(r);
+  for (const L of Object.values(bySet)) { const sc = L.filter(r => r.score != null).sort((a, b) => b.score - a.score), pr = L.filter(r => r.post != null).sort((a, b) => b.post - a.post);
+    for (const r of L) { r.sPos = sc.indexOf(r) + 1; r.pPos = pr.indexOf(r) + 1; r.nSet = L.length;
+      if (sc.length >= 3 && pr.length >= 3 && r.sPos && r.pPos) { if (r.sPos <= Math.ceil(sc.length / 3) && r.pPos > Math.ceil(pr.length * 2 / 3)) r.flag = "🟡 Rated near the top of its neighborhood but priced near the bottom: room to raise";
+        else if (r.sPos > Math.ceil(sc.length * 2 / 3) && r.pPos <= Math.ceil(pr.length / 3)) r.flag = "🔴 Priced near the top of its neighborhood but rated near the bottom: may be why it books slowly"; } } }
+  rows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1)); PP.rateRows = rows;
+  const few = rows.filter(r => r.n === 0).length;
+  return `<p class="small">${rows.filter(r => r.flag?.startsWith("🟡")).length} 🟡 rated high, priced low · ${rows.filter(r => r.flag?.startsWith("🔴")).length} 🔴 priced high, rated low · ${few} of ${rows.length} homes have no staff score yet (AI score used; ESTIMATE)</p>
+  <div class="wrap" style="max-height:620px;overflow:auto"><table class="small"><tr><th>#</th><th style="text-align:left">Home</th><th>Score</th><th>Staff (raters)</th><th>AI</th><th>Guest ★ (reviews)</th><th>Head-to-head</th><th>Rated in neighborhood</th><th>Priced in neighborhood</th><th>Posted next 30</th><th>RevPAR last 90</th><th style="text-align:left">Note</th></tr>${rows.map((r, i) => `<tr><td class="muted">${i + 1}</td><td>${escH(r.x.name)}<div class="muted">${escH(r.x.set)}</div></td><td><b>${f(r.score)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo)}</td><td>${r.sPos ? `#${r.sPos} of ${r.nSet}` : "—"}</td><td>${r.pPos ? `#${r.pPos} of ${r.nSet}` : "—"}</td><td>${fmt(r.post)}</td><td>${fmt(r.revpar)}</td><td>${escH(r.flag || "")}</td></tr>`).join("")}</table></div>
+  <p class="small muted" style="margin:4px 0 0">Score = staff overall when 2+ people scored the home; 1 rater = half staff, half AI; none = AI score (from listing photos + Track amenities). Guest ★ from the home's Airbnb listing. "Rated / priced in neighborhood" compare our own homes in the same neighborhood (Beyond posted price, next 30 days, open nights). Sources: Home Rater (Desk), home_ai, Beyond API, Track. ESTIMATE.</p>`;
+}
+// --- Neighborhood report (Brandon 2026-10-21) ---
+function ppHoodRep(g) {
+  const T = g.today, w30 = ppRange(g, T, 30), w90 = ppRange(g, T, 90), past = ppRange(g, addD(T, -90), 90), yAgo = addD(T, -364);
+  const nightsIn = (b, a, z) => { let n = 0; for (let k = b.arrival < a ? a : b.arrival; k < b.departure && k < z; k = addD(k, 1)) n++; return n; };
+  const rows = [...new Set(g.homes.map(h => h.set_id))].map(sid => { const H = g.homes.filter(h => h.set_id === sid), st = (ks) => H.map(x => ppStats(g, x, ks));
+    const a30 = st(w30), a90 = st(w90), p = st(past), avg = (L, k) => rAvg(L.map(s => s[k]).filter(v => v != null)), sumk = (L, k) => L.reduce((s, x) => s + (x[k] || 0), 0);
+    const ids = new Set(H.map(h => h.id)), GB = g.B.filter(b => b.kind === "guest" && ids.has(b.comp_id));
+    let otb = 0, ly = 0; for (const b of GB) { otb += nightsIn(b, T, addD(T, 90)); if ((b.booked_at || "").slice(0, 10) <= yAgo) ly += nightsIn(b, addD(T, -364), addD(T, -274)); }
+    const c30 = w30.map(k => g.CD[sid]?.[k]).filter(Boolean);
+    return { sid, name: g.setName[sid], n: H.length, f30: avg(a30, "fill"), cf30: rAvg(c30.map(c => c.fill).filter(v => v != null)), f90: avg(a90, "fill"), post: avg(a30, "post"), cadr: rAvg(c30.map(c => c.adr).filter(v => v != null)), gap: avg(a30, "gap"),
+      rent90: sumk(p, "rent"), revpar: avg(p, "revpar"), pace: ly ? otb / ly - 1 : null, otb, ly, comps: Math.max(0, ...c30.map(c => c.n || 0)) }; }).sort((a, b) => (b.rent90 || 0) - (a.rent90 || 0));
+  PP.hoodRows = rows;
+  return `<div class="wrap" style="max-height:640px;overflow:auto"><table class="small"><tr><th style="text-align:left">Neighborhood</th><th>Our homes</th><th>Comps</th><th>Booked next 30: us vs comps</th><th>Booked next 90</th><th>Posted (Airbnb basis) vs comp nightly, next 30</th><th>Gap</th><th>Rent last 90</th><th>RevPAR last 90</th><th>Nights on books next 90 vs LY</th></tr>${rows.map(r => { const fl = r.f30 != null && r.cf30 != null && r.f30 < r.cf30 - 0.15 && (r.gap ?? 0) > 0.05 ? "🔴 " : r.f30 != null && r.cf30 != null && r.f30 > r.cf30 + 0.15 && (r.gap ?? 0) < -0.05 ? "🟡 " : "";
+    return `<tr><td><b>${fl}${escH(r.name)}</b></td><td>${r.n}</td><td>${r.comps || "—"}</td><td>${ppFillPct(r.f30)} <span class="muted">vs ${ppFillPct(r.cf30)}</span></td><td>${ppFillPct(r.f90)}</td><td>${fmt(r.post != null ? r.post * PP_BASIS : null)} <span class="muted">vs ${fmt(r.cadr)}</span></td><td>${ppPct(r.gap)}</td><td>${fmt(r.rent90)}</td><td>${fmt(r.revpar)}</td><td>${r.otb}${r.pace != null ? ` <span style="color:var(${r.pace >= 0 ? "--green" : "--red"})">(${ppPct(r.pace)})</span>` : ` <span class="muted">(— LY)</span>`}</td></tr>`; }).join("")}</table></div>
+  <p class="small muted" style="margin:4px 0 0">🔴 our homes there book 15+ points slower than comps and sit 5%+ above them · 🟡 15+ points faster and 5%+ below. Averages across our homes in each neighborhood. Comps = most comps with a calendar on any night. Pick a neighborhood in the box above to see its homes in any other report. Sources: Beyond posted prices, Track reservations, comp calendars (AirROI / KeyData). ESTIMATE.</p>`;
+}
+// ===== Owner report (Brandon 2026-10-21): friendly, branded, makes Moose look good — only true numbers; comparisons shown only where the home does well. =====
+async function ownerReport() {
+  const hid = $("rpHome").value; if (!hid) return;
+  const wnd = window.open("", "_blank"); if (wnd) wnd.document.write("<p style='font:15px system-ui;padding:30px'>Building your owner report…</p>");
+  try {
+    const g = await ppGather(); const x = g.homes.find(h => h.id === hid) || { id: hid, name: $("rpHome").selectedOptions[0]?.text || hid, set: g.setName[$("rpSet").value] || "", set_id: $("rpSet").value };
+    if (!RT.homes) await loadRater(); setView("reports");
+    const T = g.today, y0 = T.slice(0, 4) + "-01-01", ly0 = (+T.slice(0, 4) - 1) + "-01-01", lyT = addD(T, -364), fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const B = g.B.filter(b => b.comp_id === hid), GB = B.filter(b => b.kind === "guest");
+    const rentIn = (a, z) => { let r = 0, n = 0; for (const b of GB) for (let k = b.arrival; k < b.departure; k = addD(k, 1)) if (k >= a && k < z) { r += (+b.gross_rent || 0) / b.nights; n++; } return { r, n }; };
+    const ytd = rentIn(y0, T), lyYtd = rentIn(ly0, lyT), daysYtd = ppRange(g, y0, Math.round((new Date(T) - new Date(y0)) / 864e5));
+    let own = 0, blk = 0; for (const k of daysYtd) { const n = g.N[hid]?.[k]; if (n?.kind === "owner") own++; else if (n && n.kind !== "guest") blk++; }
+    const occYtd = daysYtd.length - own - blk ? ytd.n / (daysYtd.length - own - blk) : null;
+    const nx = ppStats(g, x, ppRange(g, T, 90)), p90 = ppStats(g, x, ppRange(g, addD(T, -90), 90)), up = rentIn(T, addD(T, 90));
+    const ai = RT.ai[hid], months = []; { const d = new Date(T + "T12:00"); for (let i = -11; i <= 3; i++) { const m = new Date(d.getFullYear(), d.getMonth() + i, 1); months.push(m.toISOString().slice(0, 7)); } }
+    const mRent = months.map(m => { const a = m + "-01", z = addD(new Date(+m.slice(0, 4), +m.slice(5, 7), 1).toISOString().slice(0, 10), 0); return { m, ...rentIn(a, z), future: a >= T.slice(0, 7) + "-01" && m > T.slice(0, 7) || m === T.slice(0, 7) }; });
+    const mx = Math.max(1, ...mRent.map(v => v.r)), bars = mRent.map((v, i) => { const hh = 150 * v.r / mx, xx = 10 + i * 46; return `<g><rect x="${xx}" y="${170 - hh}" width="34" height="${hh}" rx="4" fill="${v.m >= T.slice(0, 7) ? "#b9d77a" : "#6e9a2c"}"></rect><text x="${xx + 17}" y="188" font-size="10" text-anchor="middle" fill="#666">${new Date(v.m + "-15").toLocaleDateString(undefined, { month: "short" })}</text>${v.r ? `<text x="${xx + 17}" y="${165 - hh}" font-size="9" text-anchor="middle" fill="#333">$${v.r >= 1000 ? Math.round(v.r / 1000) + "k" : Math.round(v.r)}</text>` : ""}</g>`; }).join("");
+    const ch = {}; for (const b of GB.filter(b => b.arrival >= addD(T, -365))) { const k = ppChName(b.channel) === "Direct / other" ? "Direct (our website & repeat guests)" : ppChName(b.channel); ch[k] = (ch[k] || 0) + (+b.gross_rent || 0); }
+    const chT = Object.values(ch).reduce((a, b) => a + b, 0);
+    const hi = [];
+    if (lyYtd.r > 0 && ytd.r > lyYtd.r) hi.push(`Rent this year is <b>${fmt(ytd.r)}</b>, <b>up ${Math.round((ytd.r / lyYtd.r - 1) * 100)}%</b> on the same point last year.`);
+    else if (ytd.r > 0) hi.push(`Your home has earned <b>${fmt(ytd.r)}</b> in rent so far this year across <b>${ytd.n} booked nights</b>.`);
+    if (p90.fill != null && p90.cFill != null && p90.fill > p90.cFill + 0.05) hi.push(`Over the last 90 days your home was booked <b>${ppFillPct(p90.fill)}</b> of its available nights, ahead of similar homes nearby.`);
+    if (p90.adr && p90.cAdr && p90.adr * PP_BASIS > p90.cAdr) hi.push(`It earned <b>${fmt(p90.adr)}</b> a night on average, at or above what similar homes nearby charge.`);
+    if (ai?.rating >= 4.7 && ai?.reviews >= 3) hi.push(`Guests love it: <b>★ ${(+ai.rating).toFixed(2)}</b> across <b>${ai.reviews} reviews</b> on Airbnb.`);
+    if (up.n > 0) hi.push(`<b>${up.n} nights</b> (${fmt(up.r)} in rent) are already booked for the next 90 days.`);
+    const peakRows = PEAKS.filter(p => p[1] >= T).slice(0, 6).map(([a, z, n]) => { let gN = 0, t = 0, o = 0; for (let k = a; k <= z; k = addD(k, 1)) { t++; const v = g.N[hid]?.[k]; if (v?.kind === "guest") gN++; else if (v?.kind === "owner") o++; } return `<tr><td>${escH(n)}</td><td>${fd(a)} – ${fd(z)}</td><td>${gN ? `<b>${gN} of ${t} nights booked</b>` : o ? `${o} nights yours (owner stay)` : "Open: priced for peak demand"}</td></tr>`; }).join("");
+    const stays = GB.filter(b => b.departure > T).sort((a, b) => a.arrival < b.arrival ? -1 : 1).slice(0, 25);
+    const photo = ai?.photos?.[0] ? photoUrl(ai.photos[0], ai.airbnb_id) : null;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(x.name)} · Owner report · Moose Management</title><style>
+      :root{--g:#6e9a2c;--g2:#8db53b;--ink:#1d2417;--mut:#6b7263;--line:#e6eadf;--bg:#f6f8f2}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:15px/1.5 "Segoe UI",system-ui,sans-serif;color:var(--ink)}
+      .page{max-width:900px;margin:0 auto;background:#fff;box-shadow:0 2px 24px rgba(0,0,0,.06)}.hero{position:relative;color:#fff;background:#1d2417 ${photo ? `url('${photo}') center/cover` : ""};min-height:260px}
+      .hero:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,26,15,.25),rgba(20,26,15,.85))}.hin{position:relative;padding:28px 36px}.logo{background:#fff;border-radius:8px;padding:4px 8px;height:44px}
+      .hero h1{font-size:34px;margin:70px 0 4px;letter-spacing:-.5px}.hero p{margin:0;opacity:.9}.sec{padding:24px 36px;border-bottom:1px solid var(--line)}h2{font-size:19px;margin:0 0 12px;color:var(--g)}
+      .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.t{background:var(--bg);border-radius:12px;padding:14px}.t span{display:block;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}.t b{font-size:24px}
+      ul.hl{margin:0;padding:0;list-style:none}ul.hl li{padding:8px 0 8px 30px;position:relative;border-bottom:1px dashed var(--line)}ul.hl li:before{content:"✓";position:absolute;left:4px;top:7px;color:#fff;background:var(--g2);border-radius:50%;width:20px;height:20px;text-align:center;font-size:12px;line-height:20px}
+      table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase}
+      .bar{height:12px;border-radius:6px;background:var(--g2)}.foot{padding:20px 36px;font-size:12px;color:var(--mut)}.btn{position:fixed;right:18px;top:18px;background:var(--g);color:#fff;border:0;border-radius:999px;padding:10px 18px;font:600 14px system-ui;cursor:pointer}
+      @media print{.btn{display:none}body{background:#fff}.page{box-shadow:none}}</style></head><body><button class="btn" onclick="print()">Print / save as PDF</button><div class="page">
+      <div class="hero"><div class="hin"><img class="logo" src="https://www.vacationrentalsparkcity.com/wp-content/uploads/2024/07/Vacation-Rentals-Park-City-Moose-management-logo-.png" alt="Moose Management"><h1>${escH(x.name)}</h1><p>${escH(x.set)} · Owner performance report · ${fd(T)}</p></div></div>
+      <div class="sec"><h2>Highlights</h2><ul class="hl">${hi.map(s => `<li>${s}</li>`).join("") || "<li>Your home is listed and priced daily by the Moose team.</li>"}</ul></div>
+      <div class="sec"><h2>Your year so far</h2><div class="tiles"><div class="t"><span>Rent this year</span><b>${fmt(ytd.r)}</b></div><div class="t"><span>Nights booked</span><b>${ytd.n}</b></div><div class="t"><span>Average per night</span><b>${fmt(ytd.n ? ytd.r / ytd.n : null)}</b></div><div class="t"><span>Booked (of nights available)</span><b>${ppFillPct(occYtd)}</b></div><div class="t"><span>Owner nights used</span><b>${own}</b></div></div></div>
+      <div class="sec"><h2>Rent by month</h2><svg viewBox="0 0 700 195" width="100%" role="img" aria-label="Rent by month">${bars}</svg><div style="font-size:12px;color:var(--mut)"><span style="display:inline-block;width:10px;height:10px;background:#6e9a2c;border-radius:2px"></span> stayed &nbsp; <span style="display:inline-block;width:10px;height:10px;background:#b9d77a;border-radius:2px"></span> on the books (upcoming)</div></div>
+      <div class="sec"><h2>Looking ahead</h2><div class="tiles"><div class="t"><span>Next 90 days booked</span><b>${up.n} nights</b></div><div class="t"><span>Rent on the books</span><b>${fmt(up.r)}</b></div><div class="t"><span>Upcoming stays</span><b>${stays.length}</b></div></div>
+        ${peakRows ? `<h2 style="margin-top:18px">Holidays and peak weeks</h2><table><tr><th>Week</th><th>Dates</th><th>Status</th></tr>${peakRows}</table>` : ""}</div>
+      ${chT ? `<div class="sec"><h2>Where your guests book</h2>${Object.entries(ch).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div style="display:grid;grid-template-columns:230px 1fr 60px;gap:10px;align-items:center;margin:6px 0"><span>${escH(k)}</span><div class="bar" style="width:${Math.max(3, v / chT * 100)}%"></div><b>${Math.round(v / chT * 100)}%</b></div>`).join("")}<p style="font-size:13px;color:var(--mut);margin:8px 0 0">Share of rent from stays in the last 12 months. Moose lists your home on the biggest booking sites plus our own website, so it reaches more guests.</p></div>` : ""}
+      ${stays.length ? `<div class="sec"><h2>Upcoming guest stays</h2><table><tr><th>Dates</th><th>Nights</th><th>Booked through</th><th>Rent</th></tr>${stays.map(b => `<tr><td>${fd(b.arrival)} – ${fd(b.departure)}</td><td>${b.nights}</td><td>${escH(ppChName(b.channel) === "Direct / other" ? "Moose direct" : ppChName(b.channel))}</td><td>${fmt(b.gross_rent)}</td></tr>`).join("")}</table></div>` : ""}
+      <div class="sec"><h2>What Moose does for your home</h2><ul class="hl"><li>Prices your home every day using live data on similar homes nearby, local events, flights and search demand.</li><li>Holds holiday and peak-week rates at the top of the market and watches them nightly.</li><li>Lists your home on Airbnb, VRBO and our own website, and checks where it shows up in Airbnb search every night.</li><li>Inspects, cleans and cares for your home between every stay with our local Park City team.</li></ul></div>
+      <div class="foot">Prepared by Moose Management · Vacation Rentals Park City · vacationrentalsparkcity.com<br>Rent = nightly rent paid by guests before cleaning, fees and taxes, from our reservation system (Track). "Booked" counts guest nights only; owner stays and owner holds are left out. Comparisons with similar homes use published nightly rates of comparable homes nearby (shown only as averages). Figures as of ${fd(T)}; upcoming stays can still change.</div></div></body></html>`;
+    if (wnd) { wnd.document.open(); wnd.document.write(html); wnd.document.close(); } else alert("Allow pop-ups for the Desk to open the owner report.");
+  } catch (e) { if (wnd) wnd.document.write(`<p style="font:14px system-ui;color:#b00">Couldn't build the report: ${escH(e.message || e)}</p>`); }
+}
 function ppRender() {
   const el = $("ppOut"); if (!el) return; const g = PP.g;
-  const tabs = [["daily", "📅 Daily pricing by unit"], ["season", "🍂 Season pricing review"], ["pace", "📈 Reservation pace"], ["perf", "🏆 Unit performance"], ["mkt", "⚖️ Unit vs market"], ["chan", "🔀 Channel mix"]];
+  const tabs = [["daily", "📅 Daily pricing by unit"], ["season", "🍂 Season pricing review"], ["pace", "📈 Reservation pace"], ["perf", "🏆 Unit performance"], ["mkt", "⚖️ Unit vs market"], ["chan", "🔀 Channel mix"], ["rate", "⭐ Home ratings"], ["hood", "🏘️ Neighborhoods"]];
   const hoods = (state.sets || []).filter(s => s.active !== false);
   let h = `<div class="rrow">${tabs.map(([k, l]) => `<button class="tab${PP.tab === k ? " on" : ""}" data-pp="${k}">${l}</button>`).join("")}</div>
     <div class="rrow"><select id="ppHood"><option value="*">All neighborhoods</option>${hoods.map(s => `<option value="${escH(s.id)}"${PP.hood === s.id ? " selected" : ""}>${escH(s.name)}</option>`).join("")}</select>${PP.tab === "daily" ? `<select id="ppDays">${[14, 30, 60, 90, 180].map(d => `<option${PP.days === d ? " selected" : ""} value="${d}">Next ${d} days</option>`).join("")}</select>` : ""}<button class="tab" id="ppGo">${g ? "Refresh data" : "Build reports (about 30 seconds)"}</button><button class="tab" id="ppDl"${g ? "" : " disabled"}>Download this report (Excel)</button><span id="ppMsg" class="small muted">${g ? `Data loaded ${new Date(g.t).toLocaleTimeString()} · Beyond prices captured ${g.capBeyond ? new Date(g.capBeyond).toLocaleString() : "—"}` : ""}</span></div>`;
-  if (g) h += `<div id="ppBody">${PP.tab === "daily" ? ppDaily(g) : PP.tab === "season" ? ppSeason(g) : PP.tab === "pace" ? ppPace(g) : PP.tab === "perf" ? ppPerf(g) : PP.tab === "chan" ? ppChan(g) : ppVsMkt(g)}</div>`;
+  if (g) h += `<div id="ppBody">${PP.tab === "daily" ? ppDaily(g) : PP.tab === "season" ? ppSeason(g) : PP.tab === "pace" ? ppPace(g) : PP.tab === "perf" ? ppPerf(g) : PP.tab === "chan" ? (PP.chanOnly ? ppChanOne(g, PP.chanOnly) : ppChan(g)) : PP.tab === "rate" ? ppRate(g) : PP.tab === "hood" ? ppHoodRep(g) : ppVsMkt(g)}</div>`;
   h += srcLine("Beyond posted prices (Beyond API, read-only, nightly) · our reservations (Track API, read-only) · comp nightly rates + open nights (AirROI Airbnb calendars, KeyData VRBO)", null);
   el.innerHTML = h;
-  el.querySelectorAll("[data-pp]").forEach(b => b.onclick = () => { PP.tab = b.dataset.pp; ppRender(); });
+  el.querySelectorAll("[data-pp]").forEach(b => b.onclick = () => { PP.tab = b.dataset.pp; PP.chanOnly = null; ppRender(); });
   $("ppHood").onchange = e => { PP.hood = e.target.value; ppRender(); };
   $("ppDays") && ($("ppDays").onchange = e => { PP.days = +e.target.value; ppRender(); });
   $("ppGo").onclick = async () => { if (PP.busy) return; PP.busy = true; try { await ppGather(true); } catch (e) { $("ppMsg").innerHTML = `<span class="up">${escH(e.message || e)}</span>`; } PP.busy = false; ppRender(); };
@@ -1541,6 +1641,8 @@ async function ppDownload() {
   if (PP.tab === "daily") { const ks = ppRange(g, g.today, PP.days); add("Daily pricing", [["Neighborhood", "Home", ...ks], ...ppHomes(g).map(h => [h.set, h.name, ...ks.map(k => { const n = g.N[h.id]?.[k]; return n ? (n.kind === "guest" ? "Booked " + Math.round(n.rent || 0) : n.kind === "owner" ? "Owner" : "Blocked") : ppPosted(g, h.id, k); })])]);
     add("Comp nightly", [["Neighborhood", ...ks], ...[...new Set(ppHomes(g).map(h => h.set_id))].map(sid => [g.setName[sid], ...ks.map(k => g.CD[sid]?.[k]?.adr != null ? Math.round(g.CD[sid][k].adr) : "")])]); }
   if (PP.tab === "season") { ppSeason(g); add("Season review", [["Neighborhood", "Home", "Season", "Booked %", "Comps booked %", "Booked ADR", "Posted (open nights)", "Comp nightly", "Gap", "Action", "Why"], ...PP.seasonRows.map(z => [z.x.set, z.x.name, z.n, z.s.fill, z.s.cFill, z.s.adr, z.s.post, z.s.cAdr, z.s.gap, z.act.replace(/^\S+ /, ""), z.why])]); }
+  if (PP.tab === "rate") { ppRate(g); add("Home ratings", [["Rank", "Neighborhood", "Home", "Score", "Staff", "Raters", "AI", "Guest rating", "Reviews", "Head-to-head", "Rated in neighborhood", "Priced in neighborhood", "Posted next 30", "RevPAR last 90", "Note"], ...PP.rateRows.map((r, i) => [i + 1, r.x.set, r.x.name, r.score, r.staff, r.n, r.ai, r.guest, r.rev, r.elo, r.sPos, r.pPos, r.post, r.revpar, r.flag || ""])]); }
+  if (PP.tab === "hood") { ppHoodRep(g); add("Neighborhoods", [["Neighborhood", "Our homes", "Comps", "Booked next 30", "Comps booked next 30", "Booked next 90", "Posted next 30 (Airbnb basis)", "Comp nightly next 30", "Gap", "Rent last 90", "RevPAR last 90", "Nights on books next 90", "Same day LY", "Pace vs LY"], ...PP.hoodRows.map(r => [r.name, r.n, r.comps, r.f30, r.cf30, r.f90, r.post != null ? r.post * PP_BASIS : null, r.cadr, r.gap, r.rent90, r.revpar, r.otb, r.ly, r.pace])]); }
   if (PP.tab === "pace" || PP.tab === "chan") { const t = document.querySelector("#ppBody table"); add(PP.tab === "pace" ? "Pace" : "Channel mix", [...t.rows].map(r => [...r.cells].map(c => c.innerText))); }
   if (PP.tab === "perf") { ppPerf(g); add("Unit performance", [["Rank", "Neighborhood", "Home", "Bedrooms", "Booked % last 90", "ADR last 90", "RevPAR last 90", "Rent last 90", "Rent YTD", "Booked % next 90", "Rent next 90", "Owner nights next 90", "Avg stay", "Days booked ahead", "AI score"], ...PP.perfRows.map(r => [r.rank, r.x.set, r.x.name, r.x.bedrooms, r.p.fill, r.p.adr, r.p.revpar, r.p.rent, r.ytd, r.n.fill, r.n.rent, r.n.own, r.los, r.lead, r.ai])]); }
   if (PP.tab === "mkt") { ppVsMkt(g); add("Unit vs market", [["Neighborhood", "Home", "Booked % next 30", "Comps booked % next 30", "Our price (Airbnb basis) next 30", "Comp nightly next 30", "Gap next 30", "Flag next 30", "Suggested next 30", "Booked % 31-60", "Comps booked % 31-60", "Our price 31-60", "Comp nightly 31-60", "Gap 31-60", "Flag 31-60"], ...PP.mktRows.map(r => [r.x.set, r.x.name, r.a.fill, r.a.cFill, r.a.postAb, r.a.cAdr, r.a.gap, r.fa === "🔴" ? "NOT BOOKING" : r.fa === "🟡" ? "PRICED LOW" : "", r.aa, r.b.fill, r.b.cFill, r.b.postAb, r.b.cAdr, r.b.gap, r.fb === "🔴" ? "NOT BOOKING" : r.fb === "🟡" ? "PRICED LOW" : ""])]); }
@@ -1602,12 +1704,16 @@ const RP_IDX = [
   ["Pricing & Performance", [
     ["Pricing", [["pp:daily", "Daily Pricing by Unit"], ["pp:season", "Season Pricing Review"], ["pp:mkt", "Unit vs Market"], ["hol", "Holiday / Date-Range Check"]]],
     ["Reservations", [["pp:pace", "Reservation Pace"], ["bk", "Booked Too Low / Great Bookings"], ["pp:chan", "Channel Mix"]]],
-    ["Units", [["pp:perf", "Unit Performance"], ["owner", "Owner Report"], ["rater", "Home Rankings (Home Rater)"]]],
+    ["Units", [["pp:perf", "Unit Performance"], ["pp:rate", "Home Rating Report"], ["owner", "Owner Report (to share)"], ["rater", "Home Rater (score homes)"]]],
+    ["Neighborhoods", [["pp:hood", "Neighborhood Report"], ["pp:pace", "Pace by Neighborhood"]]],
     ["Data", [["src", "Data Updated & Sources"]]]]],
   ["OTA / Channels", [
-    ["Airbnb", [["ab", "Airbnb Search Rank (our homes)"], ["ab", "Comp Price Cuts"], ["pp:daily", "Daily Pricing vs Airbnb Comps"]]],
-    ["VRBO / Booking.com", [["pp:chan", "Bookings by Channel"], ["bk", "Booked Too Low by Channel"]]],
-    ["Direct / Google", [["pulse:Google: our direct site", "Google Rank of Our Site + Ads"], ["pulse:Google vacation rentals", "Google Vacation Rentals"], ["pulse:Property managers", "Manager Reviews (Google Maps)"]]]]],
+    ["Airbnb", [["pp:chan:Airbnb", "Airbnb Bookings"], ["ab", "Airbnb Search Rank (our homes)"], ["ab", "Comp Price Cuts"], ["pp:daily", "Daily Pricing vs Airbnb Comps"]]],
+    ["VRBO", [["pp:chan:VRBO", "VRBO Bookings"], ["bk", "Booked Too Low (shows channel)"]]],
+    ["Booking.com", [["pp:chan:Booking.com", "Booking.com Bookings"], ["pulse:Google vacation rentals", "Booking.com on Google Vacation Rentals"]]],
+    ["Direct (our website)", [["pp:chan:Direct / other", "Direct Bookings"], ["pulse:Google: our direct site", "Google Rank of Our Site + Ads"]]],
+    ["Google", [["pulse:Google vacation rentals", "Google Vacation Rentals"], ["pulse:Property managers", "Manager Reviews (Google Maps)"]]],
+    ["All channels", [["pp:chan", "Channel Mix"]]]]],
   ["Market (SerpApi & more)", [
     ["Demand", [["pulse:Google searches", "Google Search Trends"], ["pulse:Trending in Utah", "Utah Trending Searches"], ["pulse:Flights into SLC", "Flights into SLC"], ["pulse:Events that bring", "PredictHQ Events + Event Demand"], ["pulse:Upcoming events", "Local Events"]]],
     ["Competition", [["hotels", "Hotel Rates (Park City + Heber)"], ["pulse:Short-term rental market", "STR Market (PriceLabs)"], ["pulse:Property managers", "Manager Reviews"]]],
@@ -1632,7 +1738,7 @@ function rpOpen(k, name) {
   RP.open = k; RP.openName = name;
   B.classList.toggle("one", !!k); $("rpOpenName").textContent = name || "";
   B.querySelectorAll(".rpsec").forEach(s => s.classList.toggle("show", !!k && s.dataset.rp === (k.startsWith("pp:") ? "pp" : k)));
-  if (k?.startsWith("pp:")) { PP.tab = k.slice(3); ppRender(); }
+  if (k?.startsWith("pp:")) { const [, t, c] = k.split(":"); PP.tab = t; PP.chanOnly = c || null; ppRender(); }
   window.scrollTo(0, 0);
 }
 // 2026-10-20: Airbnb search rank of our homes + comp price drops (from airbnb_searches, SerpApi Airbnb search).
@@ -1742,26 +1848,7 @@ function wireRpDownloads() {
       else { const aoa = [[`INTERNAL date-range check ${H.a} to ${H.b} (ESTIMATE)`], ["Sources: Desk comp checks + Track nightly rent, latest pulls; run " + H.at.toLocaleString()], [], ["Neighborhood", "Home", "Open nights", "Booked/blocked", "Action", "Rent now", "New", "Comp target", "Nights with 2+ comps", "Notes"], ...H.rows.map(r => [r.set, r.home, r.open, r.booked, r.act, r.rent && Math.round(r.rent), r.nu, r.sug && Math.round(r.sug), r.n, r.note])];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "All homes"); XLSX.writeFile(wb, `MM-Date-Check-INTERNAL-${H.a}-to-${H.b}.xlsx`); } } });
 }
-async function ownerReport() {
-  const sid = $("rpSet").value, hid = $("rpHome").value; if (!hid) return; const keep = state.set?.id;
-  const wnd = window.open("", "_blank"); if (wnd) wnd.document.write("<p style='font:14px system-ui'>Building the owner report…</p>");
-  await load(sid); const h = state.comps.find(c => c.id === hid), name = (h?.label || hid).replace(/\s*\(.*?\)\s*$/, ""), hb = homeBookings(hid);
-  const today = iso(new Date(new Date().setHours(12, 0, 0, 0))), fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-  const win = n => { const e = addD(today, n); let g = 0, o = 0, bl = 0; for (const [k, v] of Object.entries(hb.night)) if (k >= today && k < e) { if (v.kind === "guest") g++; else if (v.kind === "owner") o++; else bl++; } return { g, o, bl, open: n - g - o - bl }; };
-  const w30 = win(30), w90 = win(90), w180 = win(180);
-  const stays = hb.rows.filter(b => b.kind === "guest" && b.status !== "Cancelled" && b.departure > today).sort((a, b) => a.arrival < b.arrival ? -1 : 1);
-  const rent = stays.reduce((a, b) => a + (+b.gross_rent || 0), 0), nights = stays.reduce((a, b) => a + (+b.nights || 0), 0);
-  const q = bookingQualityForSet().filter(x => x.b.comp_id === hid), qmap = new Map(q.map(x => [x.b.reservation_id, x]));
-  const holi = PEAKS.filter(p => p[1] >= today).map(([a, b, n]) => { let g = 0, t = 0; for (let k = a; k <= b; k = addD(k, 1)) { t++; if (hb.night[k]?.kind === "guest") g++; } return `<tr><td>${escH(n)}</td><td>${fd(a)} – ${fd(b)}</td><td>${g} of ${t} nights booked</td></tr>`; }).join("");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escH(name)} · Owner report</title><style>body{font:14px/1.45 system-ui,sans-serif;color:#1a1a1a;max-width:860px;margin:24px auto;padding:0 16px}h1{font-size:22px;margin:0}h2{font-size:16px;margin:22px 0 6px}.muted{color:#667}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #e3e6df}.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.t{border:1px solid #e3e6df;border-radius:10px;padding:10px}.t b{font-size:20px;display:block}.bar{border-top:4px solid #88b535;padding-top:10px}@media print{button{display:none}}</style></head><body>
-    <div class="bar"><h1>${escH(name)}</h1><div class="muted">${escH(state.set.name)} · Moose Management · report date ${fd(today)}</div></div><button onclick="print()" style="margin-top:10px">Print / save as PDF</button>
-    <h2>On the books</h2><div class="tiles"><div class="t"><span class="muted">Next 30 nights</span><b>${w30.g} booked</b><span class="muted">${w30.open} open · ${w30.o} owner</span></div><div class="t"><span class="muted">Next 90 nights</span><b>${w90.g} booked</b><span class="muted">${w90.open} open · ${w90.o} owner</span></div><div class="t"><span class="muted">Next 180 nights</span><b>${w180.g} booked</b><span class="muted">${w180.open} open · ${w180.o} owner</span></div><div class="t"><span class="muted">Upcoming guest rent</span><b>${fmt(rent)}</b><span class="muted">${nights} nights · avg ${nights ? fmt(rent / nights) : "—"}/night</span></div></div>
-    <h2>Upcoming guest stays</h2>${stays.length ? `<table><tr><th>Stay</th><th>Nights</th><th>Channel</th><th>Rent</th><th>Per night</th><th>vs similar homes nearby</th></tr>${stays.map(b => { const x = qmap.get(b.reservation_id); return `<tr><td>${fd(b.arrival)} – ${fd(b.departure)}</td><td>${b.nights}</td><td>${escH(b.channel || "")}</td><td>${fmt(b.gross_rent)}</td><td>${fmt(b.gross_rent / Math.max(1, b.nights))}</td><td>${x ? (x.pc >= 0 ? "+" : "") + Math.round(x.pc) + "%" : "—"}</td></tr>`; }).join("")}</table>` : `<p class="muted">No upcoming guest stays yet.</p>`}
-    <h2>Holidays and peak weeks</h2><table><tr><th>Window</th><th>Dates</th><th>Status</th></tr>${holi}</table>
-    <p class="muted" style="margin-top:20px;font-size:12px">"vs similar homes nearby" compares this stay's nightly rent with the average nightly rate of comparable homes in the same area for the same nights (holiday nights: the top quarter). Owner stays and owner blocks are not counted as bookings. Sources: Track reservations; comparable homes' published nightly rates (Airbnb/VRBO data services), latest pulls. Estimates.</p></body></html>`;
-  if (wnd) { wnd.document.open(); wnd.document.write(html); wnd.document.close(); } else alert("Allow pop-ups for the Desk to open the owner report.");
-  if (keep && keep !== sid) await load(keep); setView("reports");
-}
+// (owner report moved: see ownerReport below the pricing reports, 2026-10-21)
 // ===== Home Rater (Brandon 2026-10-20): staff score our homes 1-5 + head-to-head; Claude's AI score shown beside (ESTIMATE). =====
 const RCATS = [["inside", "Inside condition", "Walls, floors, kitchen, baths"], ["clean", "Clean & well kept", "Wear and tear, things that break"], ["furniture", "Furniture & decor", "Beds, couches, finishes"], ["amenities", "Amenities", "Hot tub, garage, game room, views"], ["location", "Location", "Lifts, Main Street, shuttle, drive"], ["overall", "Overall", "Your gut score"]];
 const RT = { homes: null, ai: {}, ratings: [], duels: [], hood: null, idx: 0, sub: "rate", pair: null, pending: null };
@@ -1798,7 +1885,7 @@ function aiHtml(h) { const a = RT.ai[h.id]; if (!a) return `<div class="small mu
     <div class="small muted">Inside from the listing photos; amenities from the Airbnb listing (${escH((a.amen_list || []).join(", ") || "none found")}); ${escH(a.note || "")}. <a href="${escH(a.listing_url)}" target="_blank" rel="noopener">Airbnb listing</a> · captured ${escH(a.captured_at || "")}.</div></div>`; }
 function renderRater() {
   const T = RT.homes || [], sets = [...new Map(T.map(h => [h.set_id, h.set])).entries()];
-  const tabs = `<div class="rtabs">${[["rate", "Rate a home"], ["duel", "Which is nicer?"], ["rank", "Rankings"]].map(([k, l]) => `<button class="tab${RT.sub === k ? " on" : ""}" onclick="rSub('${k}')">${l}</button>`).join("")}<span class="small muted">${RT.ratings.length} scores · ${RT.duels.length} matchups so far</span></div>`;
+  const tabs = `<div class="rtabs">${[["rate", "Rate a home"], ["duel", "Which would you stay at?"], ["rank", "Rankings"]].map(([k, l]) => `<button class="tab${RT.sub === k ? " on" : ""}" onclick="rSub('${k}')">${l}</button>`).join("")}<span class="small muted">${RT.ratings.length} scores · ${RT.duels.length} matchups so far</span></div>`;
   let body = "";
   if (RT.err) body += `<p class="up small">${escH(RT.err)}</p>`;
   if (RT.sub === "rate") {
@@ -1814,7 +1901,7 @@ function renderRater() {
     }
   } else if (RT.sub === "duel") {
     if (!RT.pair) RT.pair = pickPair();
-    body += `<p class="small muted">Only answer if you know both homes. These answers rank every home against every other home, across neighborhoods.</p><label class="small"><input type="checkbox" id="rSame" ${RT.sameBr ? "checked" : ""}> Same bedroom count only</label>`;
+    body += `<p class="small muted">Pick the home you'd rather stay at, thinking like a guest: the home itself and where it is (lifts, Main Street, shuttle) both count. Only answer if you know both homes. These answers rank every home against every other home, across neighborhoods.</p><label class="small"><input type="checkbox" id="rSame" ${RT.sameBr ? "checked" : ""}> Same bedroom count only</label>`;
     body += RT.pair ? duelHtml(RT.pair, "duel") : `<p class="small muted">No pair found.</p>`;
   } else body += rankHtml();
   $("raterBody").innerHTML = tabs + body; wireRater();
@@ -1833,8 +1920,8 @@ function pickPair(base) {
   const near = c.filter(b => Math.abs((b.bedrooms || 0) - (a.bedrooms || 0)) <= 1); if (near.length) c = near;
   return c.length ? [a, c[Math.floor(Math.random() * c.length)]] : null;
 }
-function duelHtml([a, b], ctx) { const card = (h, s) => `<button class="rpick" data-side="${s}" data-ctx="${ctx}"><span class="small muted">${escH(h.set)}</span><b>${escH(h.name)}</b>${(RT.ai[h.id]?.photos || []).slice(0, 1).map(p => `<img loading="lazy" src="${escH(photoUrl(p, RT.ai[h.id].airbnb_id))}" alt="">`).join("")}<span class="small muted">Tap if this one is nicer</span></button>`;
-  return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">About the same</button><button class="tab" data-skip="${ctx}">Don't know</button></div>`; }
+function duelHtml([a, b], ctx) { const card = (h, s) => `<button class="rpick" data-side="${s}" data-ctx="${ctx}"><span class="small muted">${escH(h.set)}</span><b>${escH(h.name)}</b>${(RT.ai[h.id]?.photos || []).slice(0, 1).map(p => `<img loading="lazy" src="${escH(photoUrl(p, RT.ai[h.id].airbnb_id))}" alt="">`).join("")}<span class="small muted">I'd stay here</span></button>`;
+  return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">Either one</button><button class="tab" data-skip="${ctx}">Don't know</button></div>`; }
 function rankHtml() {
   const S = staffAgg(), { E, G } = eloAgg(), f = v => v == null ? "—" : (+v).toFixed(1);
   const rows = (RT.homes || []).map(h => { const s = S[h.id], a = RT.ai[h.id]; const staff = s?.avg.overall ?? null;
@@ -1867,7 +1954,7 @@ function wireRater() {
     RT.ratings.push({ ...row, rater: state.email, created_at: new Date().toISOString() });
     const p = pickPair(h); RT.pending = p;
     $("rMsg").textContent = "Saved ✓";
-    $("rAfter").innerHTML = p ? `<h3 style="margin:12px 0 4px">Quick one: is ${escH(h.name)} nicer than ${escH(p[1].name)}?</h3>${duelHtml(p, "after")}` : "";
+    $("rAfter").innerHTML = p ? `<h3 style="margin:12px 0 4px">Quick one: would you rather stay at ${escH(h.name)} or ${escH(p[1].name)}?</h3>${duelHtml(p, "after")}` : "";
     wireDuels();
   };
   if (B.querySelector("#rSame")) B.querySelector("#rSame").onchange = e => { RT.sameBr = e.target.checked; RT.pair = null; renderRater(); };
