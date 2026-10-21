@@ -2086,7 +2086,10 @@ function pickPair(base) {
   return c.length ? [a, c[Math.floor(Math.random() * c.length)]] : null;
 }
 function duelHtml([a, b], ctx) { const card = (h, s) => `<button class="rpick" data-side="${s}" data-ctx="${ctx}"><span class="small muted">${escH(h.set)}</span><b>${escH(h.name)}</b>${(RT.ai[h.id]?.photos || []).slice(0, 1).map(p => `<img loading="lazy" src="${escH(photoUrl(p, RT.ai[h.id].airbnb_id))}" alt="">`).join("")}<span class="small muted">I'd stay here</span></button>`;
-  return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">Either one</button><button class="tab" data-skip="${ctx}">Don't know</button></div>`; }
+  return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">Either one</button><button class="tab" data-skip="${ctx}">Don't know</button></div>${whyHtml(ctx)}`; }
+// Optional "why" on a pick (Brandon 2026-10-21): tap reasons BEFORE picking; saved with the duel (home_duels.why_tags / why).
+const WHY_TAGS = ["Location", "Ski access", "More space", "Nicer inside", "Views", "Hot tub / amenities", "Better photos", "Better value"];
+const whyHtml = ctx => `<div class="rwhy small" data-why="${ctx}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 8px"><span class="muted">Why? (optional, tap before you pick)</span>${WHY_TAGS.map(t => `<button type="button" class="pill rwhyt" data-t="${escH(t)}" style="cursor:pointer;border:1px solid var(--line)">${escH(t)}</button>`).join("")}<input class="rwhyx" placeholder="anything else…" maxlength="200" style="flex:1;min-width:160px"></div>`;
 function rankHtml() {
   const S = staffAgg(), { E, G } = eloAgg(), f = v => v == null ? "—" : (+v).toFixed(1);
   const rows = (RT.homes || []).map(h => { const s = S[h.id], a = RT.ai[h.id]; const staff = s?.avg.overall ?? null;
@@ -2101,7 +2104,7 @@ function rankHtml() {
     ${rows.map((r, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(r.h.name)}<div class="small muted">${escH(r.h.set)}</div></td><td class="small">${r.setN > 1 ? `#${r.setPos} of ${r.setN}` : '<span class="muted">only one</span>'}</td><td><b>${f(r.blend)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="small muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${f(r.ins)}</td><td>${f(r.aiIns)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="small muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo) + ` <span class="small muted">(${r.games})</span>`}</td></tr>`).join("")}</table></div>
     <p class="small muted">Sources: staff scores and matchups saved on the Desk; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
 }
-async function saveDuel(a, b, w) { const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w }); return error; }
+async function saveDuel(a, b, w, why) { const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w, why_tags: why?.tags?.length ? why.tags : null, why: why?.text || null }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w }); return error; }
 function wireRater() {
   const B = $("raterBody");
   B.querySelector("#rHood") && (B.querySelector("#rHood").onchange = e => { RT.hood = e.target.value; RT.idx = 0; renderRater(); });
@@ -2129,11 +2132,13 @@ function wireRater() {
 function wireDuels() {
   const B = $("raterBody");
   const done = async (ctx, w) => { const p = ctx === "after" ? RT.pending : RT.pair; if (!p) return;
-    if (w != null) { const err = await saveDuel(p[0], p[1], w); if (err) { alertMsg(err.message); return; } }
+    const wb = B.querySelector(`[data-why="${ctx}"]`), why = wb ? { tags: [...wb.querySelectorAll(".rwhyt.on")].map(x => x.dataset.t), text: wb.querySelector(".rwhyx")?.value.trim() } : null;
+    if (w != null) { const err = await saveDuel(p[0], p[1], w, why); if (err) { alertMsg(err.message); return; } }
     if (ctx === "after") { $("rAfter").innerHTML = `<p class="small muted">Thanks. Saved.</p>`; B.querySelector("#rNext")?.click(); } else { RT.pair = pickPair(); renderRater(); } };
   B.querySelectorAll(".rpick").forEach(b => b.onclick = () => done(b.dataset.ctx, +b.dataset.side));
   B.querySelectorAll("[data-tie]").forEach(b => b.onclick = () => done(b.dataset.tie, 0.5));
   B.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => done(b.dataset.skip, null));
+  B.querySelectorAll(".rwhyt").forEach(t => t.onclick = () => { t.classList.toggle("on"); t.style.background = t.classList.contains("on") ? "var(--teal2)" : ""; t.style.color = t.classList.contains("on") ? "#fff" : ""; });
 }
 function alertMsg(m) { const el = $("rMsg"); if (el) el.innerHTML = `<span class="up">${escH(m)}</span>`; }
 function renderHotels() {
