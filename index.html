@@ -1179,10 +1179,11 @@ async function loadPulse() {
     allRows(() => sb.from("flight_prices").select("*", { count: "exact" }).gte("captured_at", addD(today, -8)).order("captured_at").order("id")),
     allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "pricelabs").gte("period_date", addD(today, -500)).order("period_date").order("id"))]);
   // 2026-10-20 (SerpApi Production, market_extra.py): Google rank of our site, manager reviews, Google vacation rentals, Utah trending, drive times.
-  const [gr, mr, gv, tu, dr] = await Promise.all([ms("google_rank", rg), ms("manager_reviews", rv), ms("google_vr", rh), ms("trending_utah", rn),
-    allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "drive_time").gte("period_date", addD(today, -14)).order("captured_at").order("id"))]);
+  const [gr, mr, gv, tu, dr, st] = await Promise.all([ms("google_rank", rg), ms("manager_reviews", rv), ms("google_vr", rh), ms("trending_utah", rn),
+    allRows(() => sb.from("market_signals").select("*", { count: "exact" }).eq("source", "drive_time").gte("period_date", addD(today, -14)).order("captured_at").order("id")),
+    latestRun("str_trends").then(run => ms("str_trends", run))]);
   state.pulse = { today, trends: tr.data || [], markets: mk.data || [], fx: fx.data || [], news: nw.data || [], events: ev.data || [], flights: fl.data || [], pl: pl.data || [],
-    grank: gr.data || [], mrev: mr.data || [], gvr: gv.data || [], trend: tu.data || [], drive: dr.data || [] };
+    grank: gr.data || [], mrev: mr.data || [], gvr: gv.data || [], trend: tu.data || [], drive: dr.data || [], strt: st.data || [] };
   // 2026-10-20: PredictHQ (predicthq.py) - ranked events next 120 days + daily event demand that needs lodging.
   const [pe, pf] = await Promise.all([
     allRows(() => sb.from("phq_events_latest").select("*", { count: "exact" }).gte("start_local", today).lte("start_local", addD(today, 120)).neq("state", "deleted").order("start_local").order("id")),
@@ -1289,6 +1290,14 @@ function renderPulse() {
   if (P.trend.length) {
     const flag = /snow|storm|ski|resort|park city|deer valley|canyons|sundance|i-80|avalanche|olympic|festival|concert|jazz|utes|byu|mammoth|real salt lake/i;
     out.push(`<h3>🔥 Trending in Utah searches <span class="small muted">· last 24 hours · ${escH(P.trend[0].period_date || "")}</span></h3><div class="small" style="display:flex;flex-wrap:wrap;gap:6px">${P.trend.slice(0, 25).map(t => `<span class="pill" title="${escH((t.extra?.categories || []).join(", "))}">${flag.test(t.label + " " + (t.extra?.breakdown || []).join(" ")) ? "🚩 " : ""}${escH(t.label)}${t.value ? ` · ${(+t.value).toLocaleString()}` : ""}</span>`).join("")}</div><p class="small muted" style="margin:4px 0 0">🚩 = ski, snow, resort, big events or games.</p>${srcLine("Google Trends · Trending now (Utah) via SerpApi", P.trend[0].url)}`);
+  }
+  // --- Trending rental + property management searches (Brandon 2026-10-21; market_extra.py str_trends, daily) ---
+  {
+    const T = P.strt || [], seeds = [...new Set(T.map(t => t.extra?.seed + "|" + t.extra?.geo))];
+    const pill = t => `<a class="pill" href="${escH(t.extra?.link || t.url)}" target="_blank" rel="noopener" style="text-decoration:none">${escH(t.label)} <span class="muted">· ${escH(t.extra?.shown || t.value || "")}</span></a>`;
+    const body = seeds.map(k => { const [seed, geo] = k.split("|"), r = T.filter(t => t.extra?.seed === seed && t.extra?.geo === geo), up = r.filter(t => t.extra?.kind === "rising"), top = r.filter(t => t.extra?.kind === "top");
+      return `<div style="margin-top:6px"><b>${escH(seed)}</b> <span class="small muted">· ${geo === "US-UT" ? "Utah" : "US"}</span><div class="small" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:3px">${up.length ? up.map(pill).join("") : `<span class="muted">no rising searches</span>`}</div>${top.length ? `<div class="small muted" style="margin-top:3px">Most searched: ${top.map(t => escH(t.label)).join(" · ")}</div>` : ""}</div>`; }).join("");
+    out.push(`<h3>🏘️ Trending rental + property management searches <span class="small muted">· last 30 days${T[0] ? " · " + escH(T[0].period_date || "") : ""}</span></h3>${T.length ? body + `<p class="small muted" style="margin:4px 0 0">Rising = searches growing fastest next to each topic (Breakout = up 5,000%+). Click one to open it in Google Trends. Useful for owner leads, listing words, and what guests are looking for.</p>${srcLine("Google Trends · related queries via SerpApi", T[0].url)}` : `<p class="small muted">Starts with tonight's run (market_extra.py, 6 searches a day).</p>`}`);
   }
   // --- Google: where our site ranks + who runs ads (Mondays) ---
   if (P.grank.length) {
@@ -1445,6 +1454,7 @@ const FEEDS = [ // [name, what it gives us, table, time column, filter [col, val
   ["Stock markets + currencies", "Indexes, AUD/CAD/GBP/MXN (weekdays)", "market_signals", "captured_at", ["source", "google_finance"], 4, "Google Finance via SerpApi", "https://www.google.com/finance"],
   ["News", "Park City / Deer Valley news (daily)", "market_signals", "captured_at", ["source", "google_news"], 1.5, "Google News via SerpApi", "https://news.google.com"],
   ["Utah trending searches", "What's spiking in Utah (daily)", "market_signals", "captured_at", ["source", "trending_utah"], 1.5, "Google Trends Trending Now via SerpApi", "https://trends.google.com/trending?geo=US-UT"],
+  ["Rental + property management searches", "Rising Google searches around STR / property management (daily)", "market_signals", "captured_at", ["source", "str_trends"], 1.5, "Google Trends related queries via SerpApi", "https://trends.google.com"],
   ["Drive time", "SLC airport → Park City / Heber (daily)", "market_signals", "captured_at", ["source", "drive_time"], 1.5, "Google Maps via SerpApi", "https://www.google.com/maps"],
   ["Our Google rank + ads", "Where our site ranks for rental searches (Mondays)", "market_signals", "captured_at", ["source", "google_rank"], 8, "Google Search via SerpApi", "https://www.google.com"],
   ["Manager reviews", "Google Maps rating + reviews for us and 14 managers (Mondays)", "market_signals", "captured_at", ["source", "manager_reviews"], 8, "Google Maps via SerpApi", "https://www.google.com/maps"],
@@ -1870,7 +1880,7 @@ const RP_IDX = [
     ["Google", [["pulse:Google vacation rentals", "Google Vacation Rentals"], ["pulse:Property managers", "Manager Reviews (Google Maps)"]]],
     ["All channels", [["pp:chan", "Channel Mix"]]]]],
   ["Market (SerpApi & more)", [
-    ["Demand", [["pulse:Google searches", "Google Search Trends"], ["pulse:Trending in Utah", "Utah Trending Searches"], ["pulse:Flights into SLC", "Flights into SLC"], ["pulse:Events that bring", "PredictHQ Events + Event Demand"], ["pulse:Upcoming events", "Local Events"]]],
+    ["Demand", [["pulse:Google searches", "Google Search Trends"], ["pulse:Trending in Utah", "Utah Trending Searches"], ["pulse:Trending rental", "Rental + Property Management Searches"], ["pulse:Flights into SLC", "Flights into SLC"], ["pulse:Events that bring", "PredictHQ Events + Event Demand"], ["pulse:Upcoming events", "Local Events"]]],
     ["Competition", [["hotels", "Hotel Rates (Park City + Heber)"], ["pulse:Park City market", "Park City Market: ADR + Bookings (KeyData)"], ["pulse:Short-term rental market", "STR Market (PriceLabs)"], ["pulse:Property managers", "Manager Reviews"]]],
     ["Conditions", [["pulse:Drive time", "Drive Time from SLC"], ["pulse:News", "Park City News"], ["pulse:Stock markets", "Stock Markets"], ["pulse:Currencies", "Currencies"]]]]]];
 function rpIndexHtml() {
