@@ -62,6 +62,7 @@ main.v-rater #rater{display:block}main.v-rater>*:not(#viewnav):not(#rater){displ
 .pickhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px}.pickedlbl{background:var(--teal);color:var(--onteal);font-weight:600;padding:4px 12px;border-radius:999px;font-size:13px}
 .homesel{position:relative}.homesel summary{cursor:pointer;list-style:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--ink2)}.homesel summary::-webkit-details-marker{display:none}
 .homeselbox{position:absolute;z-index:20;top:110%;left:0;min-width:240px;max-height:340px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.15);padding:8px}.homeselbox label{display:flex;gap:8px;align-items:center;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:6px}.homeselbox label:hover{background:var(--tealbg)}.homeselbox input{width:auto!important;min-width:0;margin:0;flex:none}.homeselbox label{white-space:nowrap}.homeselbox .allrow{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:6px;font-weight:600}
+.totop{position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--teal);color:var(--onteal);font-size:22px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:opacity .2s;z-index:60}.totop.show{opacity:.92;pointer-events:auto}.totop:hover{opacity:1}
 .hidden{display:none}.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--tealbg);color:var(--teal2)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:1100px;width:95vw;padding:16px}
 dialog{max-height:90vh;overflow:auto}dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -2120,6 +2121,10 @@ async function start() {
 }
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN") setTimeout(start, 0); });
 start();
+// Back-to-top arrow (Brandon 2026-10-20): shows after scrolling down, one tap jumps to the top.
+(() => { const b = document.createElement("button"); b.className = "totop"; b.type = "button"; b.title = "Back to top"; b.setAttribute("aria-label", "Back to top"); b.textContent = "↑";
+  b.onclick = () => window.scrollTo({ top: 0, behavior: "smooth" }); document.body.appendChild(b);
+  const f = () => b.classList.toggle("show", window.scrollY > 400); window.addEventListener("scroll", f, { passive: true }); f(); })();
 </script>
 </body>
 </html>
