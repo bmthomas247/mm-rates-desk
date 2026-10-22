@@ -2108,7 +2108,7 @@ function wireRpDownloads() {
 // (owner report moved: see ownerReport below the pricing reports, 2026-10-21)
 // ===== Home Rater (Brandon 2026-10-20): staff score our homes 1-5 + head-to-head; Claude's AI score shown beside (ESTIMATE). =====
 const RCATS = [["inside", "Inside condition", "Walls, floors, kitchen, baths"], ["clean", "Clean & well kept", "Wear and tear, things that break"], ["furniture", "Furniture & decor", "Beds, couches, finishes"], ["amenities", "Amenities", "Hot tub, garage, game room, views"], ["location", "Location", "Lifts, Main Street, shuttle, drive"], ["overall", "Overall", "Your gut score"]];
-const RT = { homes: null, ai: {}, ratings: [], duels: [], hduels: [], hood: null, idx: 0, sub: "rate", pair: null, pending: null, q: "home", season: "any", rseason: "any", poll: null };
+const RT = { homes: null, ai: {}, ratings: [], duels: [], hduels: [], hood: null, idx: 0, sub: "ask", pair: null, pending: null, q: "home", season: "any", rseason: "any", poll: null, answers: [] };
 // 2026-10-22 (Brandon): question picker (homes or neighborhoods) + season (any / ski trip / summer trip). Votes keep the season.
 const SEASONS_Q = [["any", "Any time"], ["winter", "Ski trip (winter)"], ["summer", "Summer trip"]];
 const hoodOf = s => String(s || "").replace(/\s*\d+\s*BR\+?$/i, "").trim();
@@ -2125,6 +2125,7 @@ async function loadRater(force) {
     allRows(() => sb.from("home_duels").select("*", { count: "exact" }).order("id"))]);
   const [hd, ps] = await Promise.all([allRows(() => sb.from("hood_duels").select("*", { count: "exact" }).order("id")), sb.from("poll_settings").select("*").eq("id", 1)]);
   RT.hduels = hd.data || []; RT.poll = ps.data?.[0] || null;
+  const ra = await allRows(() => sb.from("rater_answers").select("qkey,subject,answer,score,season", { count: "exact" }).order("id")); RT.answers = ra.data || [];
   const setName = id => state.sets.find(s => s.id === id)?.name || id;
   RT.homes = (c.data || []).map(h => ({ ...h, name: houseName(h.label || h.id, setName(h.set_id)), set: setName(h.set_id) })).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   RT.ai = Object.fromEntries((ai.data || []).map(a => [a.comp_id, a])); RT.ratings = rt.data || []; RT.duels = du.data || [];
@@ -2139,7 +2140,7 @@ function staffAgg() { // latest score per rater per home, then the average acros
   for (const b of Object.values(by)) b.avg = Object.fromEntries(Object.entries(b.s).map(([k, v]) => [k, v.reduce((x, y) => x + y, 0) / v.length]));
   return by;
 }
-function eloAgg(list) { const E = {}, G = {}, src = (list || RT.duels).filter(d => RT.rseason === "any" || d.season === RT.rseason || (!d.season && RT.rseason === "any")); for (const d of src) { const a = E[d.a] ?? 1500, b = E[d.b] ?? 1500, ea = 1 / (1 + 10 ** ((b - a) / 400)), sa = +d.winner;
+function eloAgg(list) { const E = {}, G = {}, src = (list || RT.duels).filter(d => !d.question || d.question === "stay").filter(d => RT.rseason === "any" || d.season === RT.rseason || (!d.season && RT.rseason === "any")); for (const d of src) { const a = E[d.a] ?? 1500, b = E[d.b] ?? 1500, ea = 1 / (1 + 10 ** ((b - a) / 400)), sa = +d.winner;
   E[d.a] = a + 24 * (sa - ea); E[d.b] = b + 24 * ((1 - sa) - (1 - ea)); G[d.a] = (G[d.a] || 0) + 1; G[d.b] = (G[d.b] || 0) + 1; } return { E, G }; }
 function photosHtml(h, big) { const a = RT.ai[h.id]; if (!a?.photos?.length) return `<div class="small muted">No listing photos saved for this home yet.</div>`;
   return `<div class="rphotos${big ? " big" : ""}">${a.photos.map(p => `<a href="${escH(a.listing_url)}" target="_blank" rel="noopener"><img loading="lazy" src="${escH(photoUrl(p, a.airbnb_id))}" alt="${escH(h.name)} listing photo"></a>`).join("")}</div>`; }
@@ -2149,10 +2150,11 @@ function aiHtml(h) { const a = RT.ai[h.id]; if (!a) return `<div class="small mu
     <div class="small muted">Inside from the listing photos; amenities from the Airbnb listing (${escH((a.amen_list || []).join(", ") || "none found")}); ${escH(a.note || "")}. <a href="${escH(a.listing_url)}" target="_blank" rel="noopener">Airbnb listing</a> · captured ${escH(a.captured_at || "")}.</div></div>`; }
 function renderRater() {
   const T = RT.homes || [], sets = [...new Map(T.map(h => [h.set_id, h.set])).entries()];
-  const tabs = `<div class="rtabs">${[["rate", "Rate a home"], ["duel", "Which would you stay at?"], ["rank", "Rankings"]].map(([k, l]) => `<button class="tab${RT.sub === k ? " on" : ""}" onclick="rSub('${k}')">${l}</button>`).join("")}<span class="small muted">${RT.ratings.length} scores · ${RT.duels.length} matchups so far</span></div>`;
+  const tabs = `<div class="rtabs">${[["ask", "Quick questions"], ["rate", "Rate a home"], ["duel", "Pick a matchup"], ["rank", "Rankings"]].map(([k, l]) => `<button class="tab${RT.sub === k ? " on" : ""}" onclick="rSub('${k}')">${l}</button>`).join("")}<span class="small muted">${RT.ratings.length} scores · ${RT.duels.length + RT.hduels.length} matchups · ${(RT.answers || []).length} answers so far</span></div>`;
   let body = "";
   if (RT.err) body += `<p class="up small">${escH(RT.err)}</p>`;
-  if (RT.sub === "rate") {
+  if (RT.sub === "ask") body += askHtml();
+  else if (RT.sub === "rate") {
     const list = raterList(); if (RT.idx >= list.length) RT.idx = 0; const h = list[RT.idx];
     const mine = h ? [...RT.ratings].reverse().find(r => r.comp_id === h.id && r.rater === state.email) : null;
     body += `<div class="rrow"><select id="rHood"><option value="*"${RT.hood === "*" ? " selected" : ""}>All homes (fewest scores first)</option>${sets.map(([id, n]) => `<option value="${escH(id)}"${id === RT.hood ? " selected" : ""}>${escH(n)}</option>`).join("")}</select>
@@ -2168,7 +2170,7 @@ function renderRater() {
     const pk = RT.poll ? RT.poll.kind + "|" + RT.poll.season : "auto|auto";
     body += `<div class="rrow small"><b>Question:</b><select id="rQ"><option value="home"${RT.q === "home" ? " selected" : ""}>Which home would you rather stay at?</option><option value="hood"${RT.q === "hood" ? " selected" : ""}>Which neighborhood would you rather stay in?</option></select>
       <select id="rSeason">${SEASONS_Q.map(([k, l]) => `<option value="${k}"${RT.season === k ? " selected" : ""}>${l}</option>`).join("")}</select></div>
-      <div class="rrow small"><b>Next Slack poll:</b><select id="rPoll">${POLL_OPTS.map(([k, l]) => `<option value="${k}"${pk === k ? " selected" : ""}>${escH(l)}</option>`).join("")}</select><span id="rPollMsg" class="muted">Stays this way until you change it.</span></div>`;
+`;
     if (RT.q === "hood") {
       body += `<p class="small muted">Pick the neighborhood you'd rather stay in${seasonTxt(RT.season)}, thinking like a guest: location, lifts and town, trails, what's nearby. Only answer if you know both.</p>`;
       body += RT.pair ? hoodDuelHtml(RT.pair) : `<p class="small muted">Not enough neighborhoods.</p>`;
@@ -2193,6 +2195,66 @@ function pickPair(base) {
   const near = c.filter(b => Math.abs((b.bedrooms || 0) - (a.bedrooms || 0)) <= 1); if (near.length) c = near;
   return c.length ? [a, c[Math.floor(Math.random() * c.length)]] : null;
 }
+// ===== Quick questions (Brandon 2026-10-22): the Home Rater keeps asking staff random questions, one at a time, so we keep
+// learning which homes and locations guests prefer (by season and by type of trip). Answers -> home_duels / hood_duels
+// (matchups) and rater_answers (everything else). Least-answered homes and neighborhoods come up first.
+const ASK_WHO = [["group", "a big family or group"], ["couple", "a couple"], ["skigroup", "a group of skiers"], ["summerfam", "a family summer trip"]];
+const ASK_SCALE = (lo, hi) => [[1, "1 · " + lo], [2, "2"], [3, "3"], [4, "4"], [5, "5 · " + hi]];
+const ASK_BANK = [
+  { k: "stay", w: 5, kind: "homeduel" }, { k: "for", w: 2, kind: "homeduel" }, { k: "hstay", w: 3, kind: "hoodduel" }, { k: "hfor", w: 1, kind: "hoodduel" },
+  { k: "lifts", w: 1, kind: "hood", t: h => `How easy is it to get to the ski lifts from ${h}?`, o: ASK_SCALE("hard (drive + park)", "ski-in / short walk") },
+  { k: "town", w: 1, kind: "hood", t: h => `How easy is it to get to restaurants and Main Street from ${h}?`, o: ASK_SCALE("need a car", "walk or quick shuttle") },
+  { k: "shine", w: 1, kind: "hood", t: h => `When does ${h} shine for guests?`, o: [["winter", "Winter"], ["summer", "Summer"], ["both", "Both"], ["neither", "Neither really"]] },
+  { k: "summer", w: 1, kind: "hood", t: h => `How good is ${h} for a summer trip (trails, lake, golf, pool, things to do)?`, o: ASK_SCALE("not much to do", "great in summer") },
+  { k: "price", w: 2, kind: "home", t: h => `Is ${h} priced right for what guests get?`, o: [["low", "Too low"], ["right", "About right"], ["high", "Too high"]] },
+  { k: "photos", w: 1, kind: "home", t: h => `Do ${h}'s listing photos match how it really looks?`, o: [["better", "Better in person"], ["same", "About the same"], ["worse", "Worse in person"]] },
+  { k: "bestfor", w: 1, kind: "home", t: h => `Who is ${h} best for?`, o: [["couples", "Couples"], ["families", "Families"], ["groups", "Big groups"], ["skiers", "Ski groups"], ["summer", "Summer families"]] },
+  { k: "shape", w: 1, kind: "home", t: h => `What shape is ${h} in right now?`, o: ASK_SCALE("needs work", "like new") }];
+const ASK = { q: null, n: 0 };
+function askPick() {
+  const T = RT.homes || []; if (T.length < 2) return null;
+  const tot = ASK_BANK.reduce((a, b) => a + b.w, 0); let r = Math.random() * tot, b = ASK_BANK[0];
+  for (const x of ASK_BANK) { r -= x.w; if (r <= 0) { b = x; break; } }
+  const cnt = {}; for (const a of RT.answers || []) cnt[a.qkey + "|" + a.subject] = (cnt[a.qkey + "|" + a.subject] || 0) + 1;
+  const least = (arr, key) => { const s = [...arr].sort(() => Math.random() - 0.5).sort((x, y) => (cnt[key + "|" + x] || 0) - (cnt[key + "|" + y] || 0)); return s[0]; };
+  const season = ["any", "winter", "summer"][Math.floor(Math.random() * 3)], hoods = [...new Set(T.map(h => hoodOf(h.set)))].filter(Boolean);
+  if (b.kind === "homeduel") { const p = pickPair(); if (!p) return null; const who = ASK_WHO[Math.floor(Math.random() * ASK_WHO.length)];
+    return b.k === "stay" ? { kind: "homeduel", pair: p, season, question: "stay", text: `Which would you rather stay at${seasonTxt(season)}?` }
+      : { kind: "homeduel", pair: p, season: null, question: "for:" + who[0], text: `Which is better for ${who[1]}?` }; }
+  if (b.kind === "hoodduel") { const p = pickHoodPair(); if (!p) return null; const who = ASK_WHO[Math.floor(Math.random() * ASK_WHO.length)], s2 = season === "any" ? "winter" : season;
+    return b.k === "hstay" ? { kind: "hoodduel", pair: p, season: s2, question: "stay", text: `Which neighborhood would you rather stay in${seasonTxt(s2)}?` }
+      : { kind: "hoodduel", pair: p, season: null, question: "for:" + who[0], text: `Which neighborhood is better for ${who[1]}?` }; }
+  if (b.kind === "hood") { const h = least(hoods, b.k); return { kind: "choice", key: b.k, subject: h, skind: "hood", text: b.t(h), opts: b.o }; }
+  const ids = T.filter(h => RT.ai[h.id]?.photos?.length).map(h => h.id), id = least(ids.length ? ids : T.map(h => h.id), b.k), h = T.find(x => x.id === id);
+  return { kind: "choice", key: b.k, subject: h.id, skind: "home", home: h, text: b.t(h.name), opts: b.o };
+}
+function askHtml() {
+  if (!ASK.q) ASK.q = askPick(); const q = ASK.q; if (!q) return `<p class="small muted">No homes loaded yet.</p>`;
+  const head = `<p class="small muted" style="margin:0 0 6px">Quick questions from the rates desk. Answer what you know, skip the rest. Every answer helps us price homes and understand our neighborhoods. ${ASK.n ? `<b>${ASK.n}</b> answered this visit, thank you!` : ""}</p><h3 style="margin:6px 0 8px">${escH(q.text)}</h3>`;
+  if (q.kind === "homeduel") return head + duelHtml(q.pair, "ask");
+  if (q.kind === "hoodduel") return head + hoodDuelHtml(q.pair).replace(/data-ctx="hood"/g, 'data-ctx="ask"').replace(/data-tie="hood"/g, 'data-tie="ask"').replace(/data-skip="hood"/g, 'data-skip="ask"');
+  const h = q.home, a = h && RT.ai[h.id];
+  const pic = h ? `<div class="small muted" style="margin-bottom:6px">${escH(h.set)}${h.sleeps ? " · sleeps " + h.sleeps : ""}${a?.listing_url ? ` · <a href="${escH(a.listing_url)}" target="_blank" rel="noopener">See all the photos</a>` : ""}</div>${a?.photos?.length ? `<div class="rphotos">${a.photos.slice(0, 4).map(p => `<img loading="lazy" src="${escH(photoUrl(p, a.airbnb_id))}" alt="">`).join("")}</div>` : ""}`
+    : `<div class="small muted" style="margin-bottom:6px">We manage ${(RT.homes || []).filter(x => hoodOf(x.set) === q.subject).length} homes here.</div>`;
+  return head + pic + `<div class="rchips" style="margin:8px 0">${q.opts.map(([v, l]) => `<button class="rchip askopt" data-v="${escH(String(v))}" style="min-width:auto;padding:6px 12px">${escH(l)}</button>`).join("")}</div>
+    <div class="rrow"><button class="tab" id="askSkip">Don't know / skip</button><input id="askNote" placeholder="anything else? (optional)" maxlength="200" style="flex:1;min-width:180px"></div><span id="rMsg" class="small muted"></span>`;
+}
+async function askSave(v) {
+  const q = ASK.q; if (!q) return;
+  if (q.kind === "choice" && v != null) { const sc = typeof q.opts[0][0] === "number" ? +v : null;
+    const { error } = await sb.from("rater_answers").insert({ qkey: q.key, subject: q.subject, subject_kind: q.skind, answer: String(v), score: sc, note: $("askNote")?.value.trim() || null });
+    if (error) { alertMsg(error.message); return; } (RT.answers ||= []).push({ qkey: q.key, subject: q.subject, answer: String(v) }); }
+  if (v != null) ASK.n++;
+  ASK.q = askPick(); renderRater();
+}
+async function askDuel(w, why) {
+  const q = ASK.q; if (!q) return;
+  if (w != null) { const prev = RT.season; RT.season = q.season || "any";
+    const err = q.kind === "hoodduel" ? await (async () => { const { error } = await sb.from("hood_duels").insert({ a: q.pair[0], b: q.pair[1], winner: w, season: q.season, question: q.question }); if (!error) RT.hduels.push({ a: q.pair[0], b: q.pair[1], winner: w, season: q.season, question: q.question }); return error; })()
+      : await (async () => { const { error } = await sb.from("home_duels").insert({ a: q.pair[0].id, b: q.pair[1].id, winner: w, season: q.season === "any" ? null : q.season, question: q.question, why_tags: why?.tags?.length ? why.tags : null, why: why?.text || null }); if (!error) RT.duels.push({ a: q.pair[0].id, b: q.pair[1].id, winner: w, season: q.season === "any" ? null : q.season, question: q.question }); return error; })();
+    RT.season = prev; if (err) { alertMsg(err.message); return; } ASK.n++; }
+  ASK.q = askPick(); renderRater();
+}
 function pickHoodPair() { const H = [...new Set((RT.homes || []).map(h => hoodOf(h.set)))].filter(Boolean); if (H.length < 2) return null;
   const a = H[Math.floor(Math.random() * H.length)]; let b = a; while (b === a) b = H[Math.floor(Math.random() * H.length)]; return [a, b]; }
 function hoodDuelHtml([a, b]) { const ph = n => { const h = (RT.homes || []).find(x => hoodOf(x.set) === n && RT.ai[x.id]?.photos?.length); return h ? `<img loading="lazy" src="${escH(photoUrl(RT.ai[h.id].photos[0], RT.ai[h.id].airbnb_id))}" alt="">` : ""; };
@@ -2215,10 +2277,12 @@ function rankHtml() {
   const HE = eloAgg(RT.hduels), hoods = Object.keys(HE.G).sort((x, y) => HE.E[y] - HE.E[x]);
   const seasonSel = `<div class="rrow small"><b>Season:</b><select id="rRankSeason">${SEASONS_Q.map(([k, l]) => `<option value="${k}"${RT.rseason === k ? " selected" : ""}>${k === "any" ? "All votes" : l}</option>`).join("")}</select><span class="muted">Head-to-head and neighborhood rankings use only that season's votes.</span></div>`;
   const hoodTbl = hoods.length ? `<h3 style="margin:14px 0 4px">Neighborhoods${RT.rseason === "any" ? "" : seasonTxt(RT.rseason)}</h3><div class="wrap"><table><tr><th>#</th><th>Neighborhood</th><th>Head-to-head</th></tr>${hoods.map((n, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(n)}</td><td>${Math.round(HE.E[n])} <span class="small muted">(${HE.G[n]})</span></td></tr>`).join("")}</table></div>` : "";
+  const pk = RT.poll ? RT.poll.kind + "|" + RT.poll.season : "auto|auto";
+  const pollSel = `<div class="rrow small" style="margin-top:12px;border-top:1px solid var(--line);padding-top:8px"><b>Slack poll question:</b><select id="rPoll">${POLL_OPTS.map(([k, l]) => `<option value="${k}"${pk === k ? " selected" : ""}>${escH(l)}</option>`).join("")}</select><span id="rPollMsg" class="muted">Used by the daily Slack poll until you change it.</span></div>`;
   return seasonSel + `<p class="small"><b>Every home ranked against every other home, across all neighborhoods.</b> "In its neighborhood" = where it sits among our homes in the same neighborhood (the better ones should price higher).</p><p class="small muted">Score = staff overall when 2+ people scored the home; with 1 person it's half staff, half AI; with none it's the AI score (ESTIMATE). Head-to-head starts at 1500. Click a column to sort.</p>
     <div class="wrap"><table><tr><th>#</th><th>Home</th><th>In its neighborhood</th>${th("blend", "Score")}${th("staff", "Staff overall")}${th("ai", "AI overall")}${th("ins", "Staff inside")}${th("aiIns", "AI inside")}${th("guest", "Guest ★")}${th("elo", "Head-to-head")}</tr>
     ${rows.map((r, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(r.h.name)}<div class="small muted">${escH(r.h.set)}</div></td><td class="small">${r.setN > 1 ? `#${r.setPos} of ${r.setN}` : '<span class="muted">only one</span>'}</td><td><b>${f(r.blend)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="small muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${f(r.ins)}</td><td>${f(r.aiIns)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="small muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo) + ` <span class="small muted">(${r.games})</span>`}</td></tr>`).join("")}</table></div>
-    ${hoodTbl}<p class="small muted">Sources: staff scores and matchups saved on the Desk, plus Slack home poll votes; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
+    ${hoodTbl}${pollSel}<p class="small muted">Sources: staff scores and matchups saved on the Desk, plus Slack home poll votes; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
 }
 async function saveDuel(a, b, w, why) { const season = RT.season === "any" ? null : RT.season;
   const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w, why_tags: why?.tags?.length ? why.tags : null, why: why?.text || null, season, question: "stay" }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w, season }); return error; }
@@ -2245,6 +2309,8 @@ function wireRater() {
     wireDuels();
   };
   if (B.querySelector("#rSame")) B.querySelector("#rSame").onchange = e => { RT.sameBr = e.target.checked; RT.pair = null; renderRater(); };
+  B.querySelectorAll(".askopt").forEach(b => b.onclick = () => askSave(b.dataset.v));
+  if (B.querySelector("#askSkip")) B.querySelector("#askSkip").onclick = () => askSave(null);
   if (B.querySelector("#rQ")) B.querySelector("#rQ").onchange = e => { RT.q = e.target.value; RT.pair = null; renderRater(); };
   if (B.querySelector("#rSeason")) B.querySelector("#rSeason").onchange = e => { RT.season = e.target.value; renderRater(); };
   if (B.querySelector("#rRankSeason")) B.querySelector("#rRankSeason").onchange = e => { RT.rseason = e.target.value; renderRater(); };
@@ -2256,7 +2322,8 @@ function wireRater() {
 }
 function wireDuels() {
   const B = $("raterBody");
-  const done = async (ctx, w) => { const p = ctx === "after" ? RT.pending : RT.pair; if (!p) return;
+  const done = async (ctx, w) => { const p = ctx === "after" ? RT.pending : RT.pair; if (!p && ctx !== "ask") return;
+    if (ctx === "ask") { const wb2 = B.querySelector('[data-why="ask"]'); return askDuel(w, wb2 ? { tags: [...wb2.querySelectorAll(".rwhyt.on")].map(x => x.dataset.t), text: wb2.querySelector(".rwhyx")?.value.trim() } : null); }
     if (ctx === "hood") { if (w != null) { const err = await saveHoodDuel(p[0], p[1], w); if (err) { alertMsg(err.message); return; } } RT.pair = pickHoodPair(); renderRater(); return; }
     const wb = B.querySelector(`[data-why="${ctx}"]`), why = wb ? { tags: [...wb.querySelectorAll(".rwhyt.on")].map(x => x.dataset.t), text: wb.querySelector(".rwhyx")?.value.trim() } : null;
     if (w != null) { const err = await saveDuel(p[0], p[1], w, why); if (err) { alertMsg(err.message); return; } }
