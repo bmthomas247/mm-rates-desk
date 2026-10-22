@@ -2108,7 +2108,12 @@ function wireRpDownloads() {
 // (owner report moved: see ownerReport below the pricing reports, 2026-10-21)
 // ===== Home Rater (Brandon 2026-10-20): staff score our homes 1-5 + head-to-head; Claude's AI score shown beside (ESTIMATE). =====
 const RCATS = [["inside", "Inside condition", "Walls, floors, kitchen, baths"], ["clean", "Clean & well kept", "Wear and tear, things that break"], ["furniture", "Furniture & decor", "Beds, couches, finishes"], ["amenities", "Amenities", "Hot tub, garage, game room, views"], ["location", "Location", "Lifts, Main Street, shuttle, drive"], ["overall", "Overall", "Your gut score"]];
-const RT = { homes: null, ai: {}, ratings: [], duels: [], hood: null, idx: 0, sub: "rate", pair: null, pending: null };
+const RT = { homes: null, ai: {}, ratings: [], duels: [], hduels: [], hood: null, idx: 0, sub: "rate", pair: null, pending: null, q: "home", season: "any", rseason: "any", poll: null };
+// 2026-10-22 (Brandon): question picker (homes or neighborhoods) + season (any / ski trip / summer trip). Votes keep the season.
+const SEASONS_Q = [["any", "Any time"], ["winter", "Ski trip (winter)"], ["summer", "Summer trip"]];
+const hoodOf = s => String(s || "").replace(/\s*\d+\s*BR\+?$/i, "").trim();
+const seasonTxt = s => s === "winter" ? " for a ski trip" : s === "summer" ? " for a summer trip" : "";
+const POLL_OPTS = [["auto|auto", "Auto (homes most days, neighborhoods Fridays, winter and summer take turns)"], ["home|winter", "Homes, ski trip"], ["home|summer", "Homes, summer trip"], ["home|any", "Homes, any time"], ["hood|winter", "Neighborhoods, ski trip"], ["hood|summer", "Neighborhoods, summer trip"]];
 const photoUrl = (p, aid) => p.startsWith("http") ? p : `https://a0.muscache.com/im/pictures/${p[0] === "p" ? "prohost-api" : "hosting"}/Hosting-${aid}/original/${p.slice(2)}.jpeg?im_w=720`;
 async function loadRater(force) {
   if (RT.homes && !force) return renderRater();
@@ -2118,6 +2123,8 @@ async function loadRater(force) {
     allRows(() => sb.from("home_ai").select("*", { count: "exact" }).order("comp_id")),
     allRows(() => sb.from("home_ratings").select("*", { count: "exact" }).order("id")),
     allRows(() => sb.from("home_duels").select("*", { count: "exact" }).order("id"))]);
+  const [hd, ps] = await Promise.all([allRows(() => sb.from("hood_duels").select("*", { count: "exact" }).order("id")), sb.from("poll_settings").select("*").eq("id", 1)]);
+  RT.hduels = hd.data || []; RT.poll = ps.data?.[0] || null;
   const setName = id => state.sets.find(s => s.id === id)?.name || id;
   RT.homes = (c.data || []).map(h => ({ ...h, name: houseName(h.label || h.id, setName(h.set_id)), set: setName(h.set_id) })).sort((a, b) => a.set.localeCompare(b.set) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   RT.ai = Object.fromEntries((ai.data || []).map(a => [a.comp_id, a])); RT.ratings = rt.data || []; RT.duels = du.data || [];
@@ -2132,7 +2139,7 @@ function staffAgg() { // latest score per rater per home, then the average acros
   for (const b of Object.values(by)) b.avg = Object.fromEntries(Object.entries(b.s).map(([k, v]) => [k, v.reduce((x, y) => x + y, 0) / v.length]));
   return by;
 }
-function eloAgg() { const E = {}, G = {}; for (const d of RT.duels) { const a = E[d.a] ?? 1500, b = E[d.b] ?? 1500, ea = 1 / (1 + 10 ** ((b - a) / 400)), sa = +d.winner;
+function eloAgg(list) { const E = {}, G = {}, src = (list || RT.duels).filter(d => RT.rseason === "any" || d.season === RT.rseason || (!d.season && RT.rseason === "any")); for (const d of src) { const a = E[d.a] ?? 1500, b = E[d.b] ?? 1500, ea = 1 / (1 + 10 ** ((b - a) / 400)), sa = +d.winner;
   E[d.a] = a + 24 * (sa - ea); E[d.b] = b + 24 * ((1 - sa) - (1 - ea)); G[d.a] = (G[d.a] || 0) + 1; G[d.b] = (G[d.b] || 0) + 1; } return { E, G }; }
 function photosHtml(h, big) { const a = RT.ai[h.id]; if (!a?.photos?.length) return `<div class="small muted">No listing photos saved for this home yet.</div>`;
   return `<div class="rphotos${big ? " big" : ""}">${a.photos.map(p => `<a href="${escH(a.listing_url)}" target="_blank" rel="noopener"><img loading="lazy" src="${escH(photoUrl(p, a.airbnb_id))}" alt="${escH(h.name)} listing photo"></a>`).join("")}</div>`; }
@@ -2157,9 +2164,18 @@ function renderRater() {
         <div class="rrow"><button class="tab on" id="rSave">Save score</button><button class="tab" id="rNext">Skip / next home</button><span id="rMsg" class="small muted">${mine ? "You scored this home on " + new Date(mine.created_at).toLocaleDateString() + ". Saving again updates your score." : "1 = rough · 3 = average Park City rental · 5 = best we manage"}</span></div><div id="rAfter"></div>`;
     }
   } else if (RT.sub === "duel") {
-    if (!RT.pair) RT.pair = pickPair();
-    body += `<p class="small muted">Pick the home you'd rather stay at, thinking like a guest: the home itself and where it is (lifts, Main Street, shuttle) both count. Only answer if you know both homes. These answers rank every home against every other home, across neighborhoods.</p><label class="small"><input type="checkbox" id="rSame" ${RT.sameBr ? "checked" : ""}> Same bedroom count only</label>`;
-    body += RT.pair ? duelHtml(RT.pair, "duel") : `<p class="small muted">No pair found.</p>`;
+    if (!RT.pair) RT.pair = RT.q === "hood" ? pickHoodPair() : pickPair();
+    const pk = RT.poll ? RT.poll.kind + "|" + RT.poll.season : "auto|auto";
+    body += `<div class="rrow small"><b>Question:</b><select id="rQ"><option value="home"${RT.q === "home" ? " selected" : ""}>Which home would you rather stay at?</option><option value="hood"${RT.q === "hood" ? " selected" : ""}>Which neighborhood would you rather stay in?</option></select>
+      <select id="rSeason">${SEASONS_Q.map(([k, l]) => `<option value="${k}"${RT.season === k ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="rrow small"><b>Next Slack poll:</b><select id="rPoll">${POLL_OPTS.map(([k, l]) => `<option value="${k}"${pk === k ? " selected" : ""}>${escH(l)}</option>`).join("")}</select><span id="rPollMsg" class="muted">Stays this way until you change it.</span></div>`;
+    if (RT.q === "hood") {
+      body += `<p class="small muted">Pick the neighborhood you'd rather stay in${seasonTxt(RT.season)}, thinking like a guest: location, lifts and town, trails, what's nearby. Only answer if you know both.</p>`;
+      body += RT.pair ? hoodDuelHtml(RT.pair) : `<p class="small muted">Not enough neighborhoods.</p>`;
+    } else {
+      body += `<p class="small muted">Pick the home you'd rather stay at${seasonTxt(RT.season)}, thinking like a guest: the home itself and where it is (lifts, Main Street, shuttle, trails) both count. Only answer if you know both homes. These answers rank every home against every other home, across neighborhoods.</p><label class="small"><input type="checkbox" id="rSame" ${RT.sameBr ? "checked" : ""}> Same bedroom count only</label>`;
+      body += RT.pair ? duelHtml(RT.pair, "duel") : `<p class="small muted">No pair found.</p>`;
+    }
   } else body += rankHtml();
   $("raterBody").innerHTML = tabs + body; wireRater();
 }
@@ -2177,6 +2193,11 @@ function pickPair(base) {
   const near = c.filter(b => Math.abs((b.bedrooms || 0) - (a.bedrooms || 0)) <= 1); if (near.length) c = near;
   return c.length ? [a, c[Math.floor(Math.random() * c.length)]] : null;
 }
+function pickHoodPair() { const H = [...new Set((RT.homes || []).map(h => hoodOf(h.set)))].filter(Boolean); if (H.length < 2) return null;
+  const a = H[Math.floor(Math.random() * H.length)]; let b = a; while (b === a) b = H[Math.floor(Math.random() * H.length)]; return [a, b]; }
+function hoodDuelHtml([a, b]) { const ph = n => { const h = (RT.homes || []).find(x => hoodOf(x.set) === n && RT.ai[x.id]?.photos?.length); return h ? `<img loading="lazy" src="${escH(photoUrl(RT.ai[h.id].photos[0], RT.ai[h.id].airbnb_id))}" alt="">` : ""; };
+  const n = x => (RT.homes || []).filter(h => hoodOf(h.set) === x).length, card = (x, s) => `<button class="rpick" data-side="${s}" data-ctx="hood"><span class="small muted">We manage ${n(x)} home${n(x) === 1 ? "" : "s"} here</span><b>${escH(x)}</b>${ph(x)}<span class="small muted">I'd stay here${seasonTxt(RT.season)}</span></button>`;
+  return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="hood">Either one</button><button class="tab" data-skip="hood">Don't know</button></div>`; }
 function duelHtml([a, b], ctx) { const card = (h, s) => `<button class="rpick" data-side="${s}" data-ctx="${ctx}"><span class="small muted">${escH(h.set)}</span><b>${escH(h.name)}</b>${(RT.ai[h.id]?.photos || []).slice(0, 1).map(p => `<img loading="lazy" src="${escH(photoUrl(p, RT.ai[h.id].airbnb_id))}" alt="">`).join("")}<span class="small muted">I'd stay here</span></button>`;
   return `<div class="rduel">${Math.random() < 0.5 ? card(a, 1) + card(b, 0) : card(b, 0) + card(a, 1)}</div><div class="rrow"><button class="tab" data-tie="${ctx}">Either one</button><button class="tab" data-skip="${ctx}">Don't know</button></div>${whyHtml(ctx)}`; }
 // Optional "why" on a pick (Brandon 2026-10-21): tap reasons BEFORE picking; saved with the duel (home_duels.why_tags / why).
@@ -2191,12 +2212,18 @@ function rankHtml() {
   const inSet = {}; for (const r of [...rows].sort((x, y) => (y.blend ?? -1) - (x.blend ?? -1))) { const g = (inSet[r.h.set_id] ||= []); g.push(r); r.setPos = g.length; }
   rows.forEach(r => r.setN = inSet[r.h.set_id].length);
   const th = (key, t) => `<th data-sk="${key}" style="cursor:pointer">${t}${k === key ? " ▼" : ""}</th>`;
-  return `<p class="small"><b>Every home ranked against every other home, across all neighborhoods.</b> "In its neighborhood" = where it sits among our homes in the same neighborhood (the better ones should price higher).</p><p class="small muted">Score = staff overall when 2+ people scored the home; with 1 person it's half staff, half AI; with none it's the AI score (ESTIMATE). Head-to-head starts at 1500. Click a column to sort.</p>
+  const HE = eloAgg(RT.hduels), hoods = Object.keys(HE.G).sort((x, y) => HE.E[y] - HE.E[x]);
+  const seasonSel = `<div class="rrow small"><b>Season:</b><select id="rRankSeason">${SEASONS_Q.map(([k, l]) => `<option value="${k}"${RT.rseason === k ? " selected" : ""}>${k === "any" ? "All votes" : l}</option>`).join("")}</select><span class="muted">Head-to-head and neighborhood rankings use only that season's votes.</span></div>`;
+  const hoodTbl = hoods.length ? `<h3 style="margin:14px 0 4px">Neighborhoods${RT.rseason === "any" ? "" : seasonTxt(RT.rseason)}</h3><div class="wrap"><table><tr><th>#</th><th>Neighborhood</th><th>Head-to-head</th></tr>${hoods.map((n, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(n)}</td><td>${Math.round(HE.E[n])} <span class="small muted">(${HE.G[n]})</span></td></tr>`).join("")}</table></div>` : "";
+  return seasonSel + `<p class="small"><b>Every home ranked against every other home, across all neighborhoods.</b> "In its neighborhood" = where it sits among our homes in the same neighborhood (the better ones should price higher).</p><p class="small muted">Score = staff overall when 2+ people scored the home; with 1 person it's half staff, half AI; with none it's the AI score (ESTIMATE). Head-to-head starts at 1500. Click a column to sort.</p>
     <div class="wrap"><table><tr><th>#</th><th>Home</th><th>In its neighborhood</th>${th("blend", "Score")}${th("staff", "Staff overall")}${th("ai", "AI overall")}${th("ins", "Staff inside")}${th("aiIns", "AI inside")}${th("guest", "Guest ★")}${th("elo", "Head-to-head")}</tr>
     ${rows.map((r, i) => `<tr><td class="small muted">${i + 1}</td><td>${escH(r.h.name)}<div class="small muted">${escH(r.h.set)}</div></td><td class="small">${r.setN > 1 ? `#${r.setPos} of ${r.setN}` : '<span class="muted">only one</span>'}</td><td><b>${f(r.blend)}</b></td><td>${f(r.staff)}${r.n ? ` <span class="small muted">(${r.n})</span>` : ""}</td><td>${f(r.ai)}</td><td>${f(r.ins)}</td><td>${f(r.aiIns)}</td><td>${r.guest ? r.guest.toFixed(2) + ` <span class="small muted">(${r.rev})</span>` : "—"}</td><td>${r.elo == null ? "—" : Math.round(r.elo) + ` <span class="small muted">(${r.games})</span>`}</td></tr>`).join("")}</table></div>
-    <p class="small muted">Sources: staff scores and matchups saved on the Desk; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
+    ${hoodTbl}<p class="small muted">Sources: staff scores and matchups saved on the Desk, plus Slack home poll votes; AI score from each home's Airbnb listing photos and amenities (captured 2026-10-20); guest rating from the Airbnb listing.</p>`;
 }
-async function saveDuel(a, b, w, why) { const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w, why_tags: why?.tags?.length ? why.tags : null, why: why?.text || null }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w }); return error; }
+async function saveDuel(a, b, w, why) { const season = RT.season === "any" ? null : RT.season;
+  const { error } = await sb.from("home_duels").insert({ a: a.id, b: b.id, winner: w, why_tags: why?.tags?.length ? why.tags : null, why: why?.text || null, season, question: "stay" }); if (!error) RT.duels.push({ a: a.id, b: b.id, winner: w, season }); return error; }
+async function saveHoodDuel(a, b, w) { const season = RT.season === "any" ? null : RT.season;
+  const { error } = await sb.from("hood_duels").insert({ a, b, winner: w, season }); if (!error) RT.hduels.push({ a, b, winner: w, season }); return error; }
 function wireRater() {
   const B = $("raterBody");
   B.querySelector("#rHood") && (B.querySelector("#rHood").onchange = e => { RT.hood = e.target.value; RT.idx = 0; renderRater(); });
@@ -2218,12 +2245,19 @@ function wireRater() {
     wireDuels();
   };
   if (B.querySelector("#rSame")) B.querySelector("#rSame").onchange = e => { RT.sameBr = e.target.checked; RT.pair = null; renderRater(); };
+  if (B.querySelector("#rQ")) B.querySelector("#rQ").onchange = e => { RT.q = e.target.value; RT.pair = null; renderRater(); };
+  if (B.querySelector("#rSeason")) B.querySelector("#rSeason").onchange = e => { RT.season = e.target.value; renderRater(); };
+  if (B.querySelector("#rRankSeason")) B.querySelector("#rRankSeason").onchange = e => { RT.rseason = e.target.value; renderRater(); };
+  if (B.querySelector("#rPoll")) B.querySelector("#rPoll").onchange = async e => { const [kind, season] = e.target.value.split("|");
+    const { error } = await sb.from("poll_settings").update({ kind, season, updated_at: new Date().toISOString(), updated_by: state.email }).eq("id", 1);
+    $("rPollMsg").textContent = error ? "Couldn't save: " + error.message : "Saved ✓ The next Slack poll uses this."; if (!error) RT.poll = { kind, season }; };
   B.querySelectorAll("th[data-sk]").forEach(t => t.onclick = () => { RT.sortK = t.dataset.sk; renderRater(); });
   wireDuels();
 }
 function wireDuels() {
   const B = $("raterBody");
   const done = async (ctx, w) => { const p = ctx === "after" ? RT.pending : RT.pair; if (!p) return;
+    if (ctx === "hood") { if (w != null) { const err = await saveHoodDuel(p[0], p[1], w); if (err) { alertMsg(err.message); return; } } RT.pair = pickHoodPair(); renderRater(); return; }
     const wb = B.querySelector(`[data-why="${ctx}"]`), why = wb ? { tags: [...wb.querySelectorAll(".rwhyt.on")].map(x => x.dataset.t), text: wb.querySelector(".rwhyx")?.value.trim() } : null;
     if (w != null) { const err = await saveDuel(p[0], p[1], w, why); if (err) { alertMsg(err.message); return; } }
     if (ctx === "after") { $("rAfter").innerHTML = `<p class="small muted">Thanks. Saved.</p>`; B.querySelector("#rNext")?.click(); } else { RT.pair = pickPair(); renderRater(); } };
