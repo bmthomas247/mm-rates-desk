@@ -2530,13 +2530,16 @@ async function buildColleenSheet() {
 // append-only). Accepted rate + minimum changes go on a Kolleen list (homes, dates, current, new - never comp data).
 const FD = { rows: null, dec: [], busy: false, kind: "*", show: "open" };
 const FD_KIND = { not_booking: "🔴 Not booking", fast_booking: "🟡 Booking fast", fast_filling: "🟡 Comps filling fast", booked_low: "🟡 Booked too low",
-  stuck_at_min: "At Beyond's minimum", min_stay: "Minimum stay", segment_pace: "Neighborhood pace" };
-const FD_DATED = ["fast_filling", "booked_low"];
+  stuck_at_min: "At Beyond's minimum", min_stay: "Minimum stay", segment_pace: "Neighborhood pace", owner_min_block: "Owner minimum above market", gap_blocked: "🟡 Gap nobody can book" };
+const FD_DATED = ["fast_filling", "booked_low", "owner_min_block", "gap_blocked"];
+// Why a decision was made (hotel research: log every override with a reason, then check it after the stay)
+const FD_WHY = { accept: ["Agree with the numbers", "Owner asked", "Local knowledge", "Other"], reject: ["Comps are wrong", "Owner rule / HOA", "Already fixed", "Home issue (photos, reviews, repair)", "Event / season the tool missed", "Too risky", "Other"], later: ["Need more data", "Ask owner first", "Other"] };
 const fdKey = f => [f.kind, f.comp_id || "", f.set_id || "", FD_DATED.includes(f.kind) ? f.date_from + "|" + f.date_to : ""].join("|");
 async function loadFindings(force) {
   if (FD.busy) return; if (FD.rows && !force) return renderFindings();
   FD.busy = true; $("fdBody").innerHTML = `<p class="small muted">Loading findings…</p>`;
   const since = addD(iso(new Date()), -30);
+  const sc = await sb.from("price_scorecard").select("*").order("run_date", { ascending: false }).order("lead_days").limit(4); FD.sc = sc.data || [];
   const [f, d] = await Promise.all([allRows(() => sb.from("findings_latest").select("*", { count: "exact" }).order("severity").order("id")),
     allRows(() => sb.from("findings_decisions").select("id,finding_id,decision,note,created_at,created_by,sent_to_kolleen,findings(kind,comp_id,set_id,date_from,date_to)", { count: "exact" }).gte("created_at", since).order("created_at"))]);
   FD.busy = false;
@@ -2562,21 +2565,32 @@ function renderFindings() {
     <select id="fdShow">${[["open", "Open"], ["accept", "Accepted"], ["reject", "Rejected"], ["all", "Everything"]].map(([v, l]) => `<option value="${v}"${FD.show === v ? " selected" : ""}>${l}</option>`).join("")}</select>
     <button class="tab" id="fdRe">Refresh</button><button class="tab on" id="fdKol"${acc.length ? "" : " disabled"} title="Excel for Kolleen: home, dates, current, new - no comp data. Also saved for Did it land?">Kolleen list (${acc.length} accepted)</button>
     <span id="fdMsg" class="small muted">${all.length ? `Run ${escH(all[0].run_date)} · ${all.length} findings` : "No findings yet - findings.py runs nightly after the shadow prices."}</span></div>
+    ${fdScore()}
     ${list.length ? `<div class="wrap"><table><tr><th>Finding</th><th>Dates</th><th>Suggested change</th><th style="min-width:210px">Decision</th></tr>${list.slice(0, 300).map(x => `<tr data-fid="${x.id}">
       <td><b>${escH(x.title)}</b><div class="small">${escH(x.evidence || "")}</div><div class="small" style="color:var(--teal2)">→ ${escH(x.suggestion || "")}</div><div class="small muted">Sources: ${escH(x.sources || "")}</div></td>
       <td class="small">${escH(dates(x))}</td><td class="small">${chg(x.change)}</td>
       <td>${x.d && x.d.decision !== "later" ? `<span class="${x.d.decision === "accept" ? "down" : "muted"}"><b>${x.d.decision === "accept" ? "Accepted" : "Rejected"}</b></span><div class="small muted">${escH(x.d.created_by || "")} · ${new Date(x.d.created_at).toLocaleDateString()}${x.d.carried ? " (earlier finding)" : ""}${x.d.sent_to_kolleen ? " · on Kolleen list" : ""}${x.d.note ? "<br>" + escH(x.d.note) : ""}</div>` :
-        `<input class="fdNote" placeholder="note (optional)" maxlength="300" style="margin-bottom:4px"><div class="rrow" style="margin:0"><button class="tab on" data-fd="accept">Accept</button><button class="tab" data-fd="reject">Reject</button><button class="tab" data-fd="later">Later</button></div>${x.d?.decision === "later" ? `<div class="small muted">Snoozed by ${escH(x.d.created_by || "")}</div>` : ""}`}</td></tr>`).join("")}</table></div>${list.length > 300 ? `<p class="small muted">Showing the first 300 of ${list.length}.</p>` : ""}` : `<p class="small muted">Nothing here.</p>`}
+        `<select class="fdWhy" style="margin-bottom:4px;width:100%"><option value="">Why? (pick after the button)</option>${[...new Set(Object.values(FD_WHY).flat())].map(w => `<option>${w}</option>`).join("")}</select><input class="fdNote" placeholder="note (optional)" maxlength="300" style="margin-bottom:4px"><div class="rrow" style="margin:0"><button class="tab on" data-fd="accept">Accept</button><button class="tab" data-fd="reject">Reject</button><button class="tab" data-fd="later">Later</button></div>${x.d?.decision === "later" ? `<div class="small muted">Snoozed by ${escH(x.d.created_by || "")}</div>` : ""}`}</td></tr>`).join("")}</table></div>${list.length > 300 ? `<p class="small muted">Showing the first 300 of ${list.length}.</p>` : ""}` : `<p class="small muted">Nothing here.</p>`}
     <p class="small muted">Findings are checks our tool runs every night (comps' booking pace from KeyData, our Track bookings, Beyond's calendar, our shadow prices). Nothing changes anywhere until you Accept, and even then it only goes on the Kolleen list. A Reject hides the same finding for 7 days (dated ones for good). Every number is an ESTIMATE.</p>`;
   $("fdKind").onchange = e => { FD.kind = e.target.value; renderFindings(); };
   $("fdShow").onchange = e => { FD.show = e.target.value; renderFindings(); };
   $("fdRe").onclick = () => loadFindings(true);
   $("fdKol").onclick = () => fdKolleen(acc);
   el.querySelectorAll("[data-fd]").forEach(b => b.onclick = async () => {
-    const tr = b.closest("tr"), id = +tr.dataset.fid, note = tr.querySelector(".fdNote")?.value.trim() || null;
+    const tr = b.closest("tr"), id = +tr.dataset.fid, why = tr.querySelector(".fdWhy")?.value || "", n0 = tr.querySelector(".fdNote")?.value.trim() || "";
+    if (b.dataset.fd !== "accept" && !why) { $("fdMsg").innerHTML = `<span class="up">Pick a reason first (it helps the tool learn).</span>`; return; }
+    const note = [why, n0].filter(Boolean).join(" - ") || null;
     b.disabled = true; const { data, error } = await sb.from("findings_decisions").insert({ finding_id: id, decision: b.dataset.fd, note }).select("id,finding_id,decision,note,created_at,created_by,sent_to_kolleen");
     if (error) { $("fdMsg").innerHTML = `<span class="up">Couldn't save: ${escH(error.message)}</span>`; b.disabled = false; return; }
     const f = FD.rows.find(r => r.id === id); FD.dec.push({ ...data[0], findings: { kind: f.kind, comp_id: f.comp_id, set_id: f.set_id, date_from: f.date_from, date_to: f.date_to } }); renderFindings(); });
+}
+function fdScore() {
+  const s = FD.sc || []; if (!s.length) return `<p class="small muted">Scorecard: starts once our tool has priced nights that have now passed (needs a few weeks of shadow prices).</p>`;
+  const p = v => v == null ? "—" : Math.round(v * 100) + "%";
+  return `<details class="small" style="margin:6px 0"><summary style="cursor:pointer"><b>Scorecard</b> · how our tool's prices did vs what actually booked (last 60 nights) · ${escH(s[0].run_date)}</summary>
+    <div class="wrap"><table class="small"><tr><th>Price set</th><th>Nights sold</th><th>Ours under what guest paid</th><th>Beyond under</th><th>Ours 15%+ over</th><th>Beyond 15%+ over</th><th>Unsold nights</th><th>Unsold where we'd have gone lower</th></tr>
+    ${s.map(x => `<tr><td>${x.lead_days} days before</td><td>${x.nights_sold}</td><td><b>${p(x.regret)}</b></td><td>${p(x.beyond_regret)}</td><td>${p(x.over_on_sold)}</td><td>${p(x.beyond_over)}</td><td>${x.nights_unsold}</td><td>${p(x.lower_on_unsold)}</td></tr>`).join("")}</table></div>
+    <p class="muted" style="margin:2px 0">Lower "under" = less money left on the table. Lower "over" = fewer bookings we'd have priced away. Idea from Airbnb's own pricing team ("booking regret") and hotel forecast tracking. Sources: shadow_prices vs Track our_bookings. ESTIMATE.</p></details>`;
 }
 async function fdKolleen(acc) {
   const msg = $("fdMsg"); if (!acc.length) return; msg.textContent = "Building the Kolleen list…";
