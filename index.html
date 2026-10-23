@@ -2530,7 +2530,7 @@ async function buildColleenSheet() {
 // append-only). Accepted rate + minimum changes go on a Kolleen list (homes, dates, current, new - never comp data).
 const FD = { rows: null, dec: [], busy: false, kind: "*", show: "open" };
 const FD_KIND = { not_booking: "🔴 Not booking", fast_booking: "🟡 Booking fast", fast_filling: "🟡 Comps filling fast", booked_low: "🟡 Booked too low",
-  stuck_at_min: "At Beyond's minimum", min_stay: "Minimum stay", segment_pace: "Neighborhood pace", owner_min_block: "Owner minimum above market", gap_blocked: "🟡 Gap nobody can book", channel_fee: "Channel fees (what we keep)", total_price: "🟡 Airbnb total vs comps" };
+  stuck_at_min: "At Beyond's minimum", min_stay: "Minimum stay", segment_pace: "Neighborhood pace", owner_min_block: "Owner minimum above market", gap_blocked: "🟡 Gap nobody can book", channel_fee: "Channel fees (what we keep)", total_price: "🟡 Airbnb total vs comps", event_gone: "Event that moved away", data_stale: "🔴 Data out of date" };
 const FD_DATED = ["fast_filling", "booked_low", "owner_min_block", "gap_blocked"];
 // Why a decision was made (hotel research: log every override with a reason, then check it after the stay)
 const FD_WHY = { accept: ["Agree with the numbers", "Owner asked", "Local knowledge", "Other"], reject: ["Comps are wrong", "Owner rule / HOA", "Already fixed", "Home issue (photos, reviews, repair)", "Event / season the tool missed", "Too risky", "Other"], later: ["Need more data", "Ask owner first", "Other"] };
@@ -2559,7 +2559,7 @@ function renderFindings() {
   const list = all.filter(x => (FD.kind === "*" || x.kind === FD.kind) && (FD.show === "all" || (FD.show === "open" ? isOpen(x) : x.d?.decision === FD.show)));
   const kinds = [...new Set(all.map(x => x.kind))], acc = all.filter(x => x.d?.decision === "accept" && x.change && !x.d.sent_to_kolleen);
   const cnt = k => all.filter(x => x.kind === k && isOpen(x)).length;
-  const chg = c => !c ? "—" : c.kind === "min" ? `min stay ${c.cur} → <b>${c.new}</b> nights` : `${c.kind === "min_price" ? "Beyond minimum " : ""}${fmt(c.cur)} → <b>${fmt(c.new)}</b>`;
+  const chg = c => !c ? "—" : c.kind === "min" ? `min stay ${c.cur} → <b>${c.new}</b> nights` : `${c.kind === "min_price" ? "Beyond minimum " : ""}${fmt(c.cur)} → <b>${fmt(c.new)}</b>${c.pct != null ? ` (${c.pct > 0 ? "+" : ""}${c.pct}%)` : ""}${c.note ? `<div class="muted">${escH(c.note)}</div>` : ""}`;
   const dates = x => x.date_from ? (x.date_from === x.date_to ? x.date_from : `${x.date_from} → ${x.date_to}`) : "";
   el.innerHTML = `<div class="rrow"><select id="fdKind"><option value="*">All kinds (${all.filter(isOpen).length} open)</option>${kinds.map(k => `<option value="${k}"${FD.kind === k ? " selected" : ""}>${FD_KIND[k] || k} (${cnt(k)})</option>`).join("")}</select>
     <select id="fdShow">${[["open", "Open"], ["accept", "Accepted"], ["reject", "Rejected"], ["all", "Everything"]].map(([v, l]) => `<option value="${v}"${FD.show === v ? " selected" : ""}>${l}</option>`).join("")}</select>
@@ -2597,7 +2597,7 @@ async function fdKolleen(acc) {
   try { await needXLSX(); const today = iso(new Date()), setName = id => (state.sets.find(s => s.id === id) || {}).name || id;
     const what = c => c.kind === "min" ? "Minimum stay" : c.kind === "min_price" ? "Beyond minimum price" : "Nightly rate";
     const aoa = [["Changes from the Findings queue (accepted on the Rates Desk)"], [], ["Neighborhood", "Home", "From", "To (last night)", "Change", "Current", "New", "Done?"],
-      ...acc.map(x => [setName(x.set_id), x.home || "", x.date_from || "", x.date_to || "", what(x.change), x.change.cur, x.change.new, ""])];
+      ...acc.map(x => [setName(x.set_id), x.home || "", x.date_from || "", x.date_to || "", what(x.change) + (x.change.pct != null ? ` (${x.change.pct > 0 ? "+" : ""}${x.change.pct}%)` : "") + (x.change.note ? " - " + x.change.note : ""), x.change.cur, x.change.new, ""])];
     const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [30, 22, 11, 13, 20, 10, 10, 8].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, "Changes"); XLSX.writeFile(wb, `MM-Findings-Changes-${today}.xlsx`);
     const req = acc.filter(x => ["rate", "min"].includes(x.change.kind) && x.date_from).map(x => ({ batch: today, set_id: x.set_id, comp_id: x.comp_id, home: x.home,
