@@ -582,9 +582,11 @@ function renderDaily(ch) {
 const HK_ALL = { "3676": [280, 95], "1205": [200, 65], "1206": [215, 70], "1302": [220, 75], "1304": [220, 75], "1313": [240, 80], "1401": [220, 75],
   "1403": [235, 80], "1404": [240, 80], "3301": [220, 75], "3303": [220, 75], "3307": [220, 75], "3401": [220, 75], "4102": [220, 75], "4104": [210, 70],
   "4201": [235, 80], "4205": [210, 70], "4206": [245, 80], "4403": [185, 60], "2308": [245, 80], "2207": [225, 75] };
-// Fees hidden in our nightly rent (Track, viewed 2026-10-08; claude/reference/mm-fees-2026-10-08.md):
-// admin 8.3% + damage waiver 5% on every channel, plus channel recovery (Airbnb 21.65%, VRBO 16.68%, Direct 0%).
-const LOAD = { Airbnb: 0.083 + 0.05 + 0.2165, VRBO: 0.083 + 0.05 + 0.1668, Direct: 0.083 + 0.05 };
+// Fees on our nightly rent (Track API quotes 2026-10-22; claude/reference/mm-fees-2026-10-22.md): Guest Services Fee 11.1%
+// (9.5% + Beyond recovery) + damage waiver 7.5% on every channel, plus channel recovery (Airbnb 25% - Kim asked for 28% -,
+// VRBO 20%, Direct 0%). Was admin 8.3% + damage 5% + Airbnb 21.65% / VRBO 16.68% before 10/21.
+const FEE_GS = 0.111, FEE_DW = 0.075, FEE_AB = 0.25, FEE_VR = 0.20;
+const LOAD = { Airbnb: FEE_GS + FEE_DW + FEE_AB, VRBO: FEE_GS + FEE_DW + FEE_VR, Direct: FEE_GS + FEE_DW };
 const STAY_N = 3; // cleaning is spread over a typical 3-night stay (the comp check windows are 2–3 nights)
 // Peak nights: price toward the higher comps (Brandon, 2026-10-08; RULES.md section 0).
 const PEAKS = [["2026-11-20", "2026-11-22", "Opening weekend"], ["2026-11-25", "2026-11-29", "Thanksgiving"], ["2026-12-19", "2027-01-03", "Christmas / New Year"],
@@ -832,7 +834,7 @@ function homeDetail(homeId) {
     <h3 class="chh">Booking pace vs last year <span class="pill">ESTIMATE</span></h3>${paceHtml([homeId], c.label)}
     <h3 class="chh">Holidays and events: booked or not</h3>${homeHolidays(hb)}
     <div class="cal2" style="margin-top:6px"><div><h3 class="chh">Recent bookings</h3>${homeBookList(hb, "recent")}</div><div><h3 class="chh">Top bookings <span class="small muted">highest rent per night</span></h3>${homeBookList(hb, "top")}</div></div>
-    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, admin 8.3% + damage waiver 5%, Airbnb recovery 21.65% (Track fees, 2026-10-08), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
+    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, Guest Services Fee 11.1% + damage waiver 7.5%, Airbnb recovery 25% (Track quotes, 2026-10-22), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
     <p class="small muted">Sources: comp prices = latest pulls in this Rates Desk (Airbnb listing/checkout pages and manager direct checkouts, each with its link in "Search a stay"); calendars = Airbnb; bookings, owner stays, blocks, revenue and last booking = Track (read-only).</p>`;
   $("dlg").showModal(); drawHomeCal();
 }
@@ -982,11 +984,11 @@ function flagLists(S) {
 function flagHtml(S) {
   // Flags in per-night terms so the change can be typed straight into Beyond / Track.
   // gap per night = (our Airbnb stay total − comp median stay total) ÷ nights (both pre-tax listing totals; cleaning cancels out).
-  // Nightly rate change = that gap ÷ (1 + our fees hidden in rent on Airbnb: admin 8.3% + damage 5% + recovery 21.65%). ESTIMATE.
+  // Nightly rate change = that gap ÷ (1 + our fees on rent on Airbnb: guest services 11.1% + damage 7.5% + recovery 25%). ESTIMATE.
   const { red, low } = flagLists(S);
   const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const n = s => Math.round((new Date(s.co) - new Date(s.ci)) / 864e5);
-  const AB_LOAD = 0.083 + 0.05 + 0.2165;
+  const AB_LOAD = LOAD.Airbnb;
   const per = s => Math.abs(s.ourAb - s.medAb) / n(s), rate = s => Math.round(per(s) / (1 + AB_LOAD) / 5) * 5;
   const line = (s, hi) => `<div class="flag ${hi ? "red" : "amb"}"><strong>${hi ? "🔴" : "🟡"} ${fd(s.ci)} – ${fd(s.co)}</strong> ${hi ? "Lower" : "Raise"} the nightly rate by about <b>${fmt(rate(s))}/night</b>. We're ${fmt(per(s))}/night ${hi ? "above" : "below"} similar homes on Airbnb (${fmt(s.ourAb / n(s))} vs ${fmt(s.medAb / n(s))} per night, ${n(s)}-night stay). <span class="muted small">Nightly rate change backs out our hidden fees (ESTIMATE). Compared with ${s.nAb} similar homes.</span></div>`;
   const h = red.map(s => line(s, true)).join("") + low.map(s => line(s, false)).join("");
@@ -998,12 +1000,12 @@ function renderDirectFees() {
   if (!rows.length) { $("directFees").innerHTML = ""; return; }
   const comp = id => state.comps.find(c => c.id === id) || {};
   // Our site folds every fee into "Rent" (Track booking-engine quote = Rent + Taxes only). Split it back out (ESTIMATE):
-  // cleaning = shown + hidden per unit (HK sheet, uploaded 2026-10-08), then admin 8.3% + damage waiver 5% of base rent
-  // (Track fees #82, #81, Display As = Rent; claude/reference/mm-fees-2026-10-08.md).
+  // cleaning = shown + hidden per unit (HK sheet, uploaded 2026-10-08; cleaning rose ~18% on 10/22 with linens), then guest services
+  // 11.1% + damage waiver 7.5% of base rent (Track quotes 2026-10-22; claude/reference/mm-fees-2026-10-22.md).
   const HK = { "3676": [280, 95], "1206": [215, 70], "1403": [235, 80], "1404": [240, 80], "4104": [210, 70], "4205": [210, 70],
     "4206": [245, 80], "4403": [185, 60], "2308": [245, 80] };
   const split = r => { const num = ((comp(r.comp_id).label || "").match(/\d{4}/) || [])[0], hk = HK[num];
-    if (!hk || r.rent == null) return r; const clean = hk[0] + hk[1], base = (+r.rent - clean) / 1.133;
+    if (!hk || r.rent == null) return r; const clean = hk[0] + hk[1], base = (+r.rent - clean) / (1 + LOAD.Direct);
     return { ...r, rent: base, cleaning: clean, cleanHidden: hk[1], fees: +r.rent - clean - base, est: true }; };
   const groups = {};
   for (const r0 of rows) {
@@ -1018,7 +1020,7 @@ function renderDirectFees() {
     const feeAll = (clean || 0) + (fees || 0), est = a.some(r => r.est), E = est ? '<br><span class="muted small">ESTIMATE · in rent</span>' : "";
     const hid = est ? avg(a, r => r.cleanHidden) : null;
     return `<tr class="${name.includes("ours") ? "ourrow" : ""}"><td><b>${name}</b><br><span class="muted small">${homes} home${homes > 1 ? "s" : ""} · ${a.length} stay${a.length > 1 ? "s" : ""} · avg ${n.toFixed(1)} nights</span></td>
-      <td>${fmt(rent)}${est ? '<br><span class="muted small">ESTIMATE · base</span>' : ""}</td><td>${clean ? fmt(clean) : '<span class="muted">$0 shown</span>'}${est ? `<br><span class="muted small">incl. ${fmt(hid)} hidden</span>` : ""}</td><td>${fees ? fmt(fees) : '<span class="muted">$0 shown</span>'}${est ? '<br><span class="muted small">admin 8.3% + damage 5%</span>' : ""}</td>
+      <td>${fmt(rent)}${est ? '<br><span class="muted small">ESTIMATE · base</span>' : ""}</td><td>${clean ? fmt(clean) : '<span class="muted">$0 shown</span>'}${est ? `<br><span class="muted small">incl. ${fmt(hid)} hidden</span>` : ""}</td><td>${fees ? fmt(fees) : '<span class="muted">$0 shown</span>'}${est ? '<br><span class="muted small">guest services 11.1% + damage 7.5%</span>' : ""}</td>
       <td><b>${fmt(feeAll)}</b><br><span class="muted small">${tot ? Math.round(feeAll / tot * 100) : 0}% of total</span></td><td>${fmt(tax)}</td><td><b>${fmt(tot)}</b><br><span class="muted small">${fmt(tot / n)}/night</span></td></tr>`;
   };
   const keys = Object.keys(groups).sort((a, b) => (b.includes("ours") - a.includes("ours")) || a.localeCompare(b));
@@ -1031,7 +1033,7 @@ function renderDirectFees() {
   $("directFees").innerHTML = `<h3 class="chh">Average direct-booking fees per stay</h3>${bars}
     <div class="wrap"><table><tr><th>Property manager</th><th>Rent</th><th>Cleaning</th><th>Other fees</th><th>Total fees</th><th>Taxes</th><th>Checkout total</th></tr>` +
     keys.map(k => line(k, groups[k])).join("") + `</table></div>
-    <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). <br><b>Our row is an ESTIMATE.</b> Our site shows guests one Rent line plus taxes; cleaning, admin and damage waiver are all inside that Rent. We split it back out with: cleaning shown + hidden per home (HK cleaning sheet, uploaded 2026-10-08; matches Track reservations), admin 8.3% and damage waiver 5% of base rent (Track fees #82 and #81, Display As = Rent, viewed 2026-10-08). Sources: Track booking-engine quotes from vacationrentalsparkcity.com; claude/reference/mm-fees-2026-10-08.md.</p>`;
+    <p class="small muted">Averages of every direct checkout quote we have on file for these dates (each manager's own site; nothing booked). <br><b>Our row is an ESTIMATE.</b> Our site shows guests one Rent line plus taxes; cleaning, admin and damage waiver are all inside that Rent. We split it back out with: cleaning shown + hidden per home (HK cleaning sheet, uploaded 2026-10-08; matches Track reservations), Guest Services Fee 11.1% and damage waiver 7.5% of base rent (Track quotes 2026-10-22; cleaning on the HK sheet is from before the 10/22 linen increase). Sources: Track booking-engine quotes from vacationrentalsparkcity.com; claude/reference/mm-fees-2026-10-22.md.</p>`;
 }
 function renderSiteFees() {
   // Average all-in per night on each booking site: our homes vs Primary comps. Shown at the bottom of that site's section.
@@ -1424,7 +1426,7 @@ function renderReports() {
   <div class="rpback"><a href="#" id="rpBack">← All reports</a> <b id="rpOpenName"></b></div>
   <section class="rpsec" data-rp="pp"><div id="ppOut"></div></section>
   <section class="rpsec" data-rp="bk"><h3>🟡 Booked too low · 🟢 Great bookings <span class="small muted">all our homes, upcoming guest stays (next 180 days)</span></h3>
-    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×1.58, Airbnb/VRBO ×1.375: our +15% plan and the fees folded into the nightly price). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 5+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
+    <p class="small muted" style="margin:0">Each stay's nightly rent vs the comps' own nightly rates for the same nights (Airbnb from AirROI, else VRBO from KeyData; booked or open). Our rent is put on the same basis as the comps' Airbnb nightly price (Direct rent ×${PP_BASIS}, Airbnb/VRBO ×${OTA_BASIS}: our +15% plan and our fees, Track 2026-10-22). Normal nights compare to the comp average; holiday/event nights to the comps' top quarter (be the highest). Stays of 28+ nights and outlier comp prices are left out; nights need 5+ priced comps. Too low = 15%+ under; great = 10%+ over. Whole stay = rent dollars. ESTIMATE.</p>
     <div class="rrow"><button class="tab on" id="rpRunBk">Run for all neighborhoods</button><span id="rpBkMsg" class="small muted">${RP.bk ? "Last run " + RP.bk.at.toLocaleTimeString() : "Takes about a minute."}</span></div><div id="rpBkOut">${RP.bk ? bkHtml() : ""}</div></section>
   <section class="rpsec" data-rp="ab"><h3>🔍 Airbnb search: where our homes show · 📉 comp price drops <span class="small muted">last 7 days (airbnb_search.py, nightly)</span></h3><div id="rpAbOut"></div></section>
   <section class="rpsec" data-rp="src"><h3>🕒 When the data was updated · 📚 Where it comes from</h3><div id="rpSrcOut"></div></section>
@@ -1481,7 +1483,8 @@ async function loadDataStatus() {
 // Unit performance, Unit vs market. One data pull (about 30 s) feeds all five. Sources: Beyond posted prices (beyond_snapshots,
 // read-only API), our bookings (Track, read-only), comp nightly rates + open nights (AirROI / KeyData). ESTIMATE where noted.
 const PP = { g: null, tab: "daily", days: 30, hood: "*", busy: false };
-const PP_BASIS = 1.58; // our posted nightly (Track rack rent) -> comps' Airbnb nightly basis (+15% plan + folded fees; Track fee setup 2026-10-13)
+const PP_BASIS = +(1.15 * (1 + LOAD.Airbnb)).toFixed(3); // our posted nightly -> comps' Airbnb basis: +15% plan x (1 + fees). 1.651 from 2026-10-22 (was 1.58)
+const OTA_BASIS = +(PP_BASIS / 1.15).toFixed(3); // OTA bookings already carry the +15% plan (was 1.375)
 const SEASONS = [["Fall shoulder", "2026-10-20", "2026-11-19"], ["Early ski", "2026-11-20", "2026-12-18"], ["Christmas / New Year", "2026-12-19", "2027-01-03"],
   ["January", "2027-01-04", "2027-01-31"], ["February (Presidents Day)", "2027-02-01", "2027-02-28"], ["March / spring break", "2027-03-01", "2027-04-11"], ["Spring shoulder", "2027-04-12", "2027-05-20"]];
 async function ppGather(force) {
@@ -1762,7 +1765,7 @@ function kolCheck(g) {
   }
   for (const b of g.B.filter(b => b.kind === "guest" && (b.booked_at || "").slice(0, 10) >= addD(T, -7) && b.nights && b.nights < 28)) {
     const x = g.homes.find(h => h.id === b.comp_id); if (!x) continue; const c = []; for (let k = b.arrival; k < b.departure; k = addD(k, 1)) { const d = g.CD[x.set_id]?.[k]; if (d?.adr) c.push(d.adr); }
-    if (c.length < b.nights / 2) continue; const mult = /airbnb|\babb\b|vrbo|homeaway/i.test(b.channel || "") ? 1.375 : PP_BASIS, ours = (+b.gross_rent / b.nights) * mult, gap = ours / rAvg(c) - 1;
+    if (c.length < b.nights / 2) continue; const mult = /airbnb|\babb\b|vrbo|homeaway/i.test(b.channel || "") ? OTA_BASIS : PP_BASIS, ours = (+b.gross_rent / b.nights) * mult, gap = ours / rAvg(c) - 1;
     if (gap <= -0.15) items.push({ p: 2, type: "🟡 Booked too low this week", x, lab: `${b.arrival} → ${b.departure}`, imp: b.nights * (rAvg(c) / mult - b.gross_rent / b.nights), ask: `${x.name} (${x.set}) booked ${b.arrival} → ${b.departure} at ${fmt(b.gross_rent / b.nights)} a night. Raise similar open dates for this home.`, why: `${ppPct(gap)} vs comps for the same nights (${b.channel || "guest"})` });
   }
   const yAgo = addD(T, -364), G = g.B.filter(b => b.kind === "guest"), nightsIn = (b, m) => { let n = 0; for (let k = b.arrival; k < b.departure; k = addD(k, 1)) if (k.slice(0, 7) === m) n++; return n; };
@@ -1820,7 +1823,7 @@ async function btLoad() {
   const OTA = /vrbo|abb|airbnb|bdc|booking|bnb|hometogo|hopper/i;
   const N = {}, start = {};
   for (const b of ob) { if (b.status === "Cancelled") continue; if (!start[b.comp_id] || b.arrival < start[b.comp_id]) start[b.comp_id] = b.arrival;
-    const rate = b.kind === "guest" && b.nights && +b.gross_rent > 0 ? (+b.gross_rent / b.nights) * (OTA.test(b.channel || "") ? 1 : 1.375) : null;
+    const rate = b.kind === "guest" && b.nights && +b.gross_rent > 0 ? (+b.gross_rent / b.nights) * (OTA.test(b.channel || "") ? 1 : OTA_BASIS) : null;
     for (let k = b.arrival; k < b.departure; k = add(k, 1)) if (k >= BT_W0 && k <= BT_W1) (N[b.comp_id] ??= {})[k] = { kind: b.kind, rate }; }
   const rows = []; let upd = null;
   for (const h of comps.filter(c => c.tier === "Ours")) {
@@ -2047,7 +2050,7 @@ function bookingQualityForSet() { // uses the loaded set (state.*)
     if (per.length < ks.length / 2) continue;
     // Same basis as the comps' Airbnb nightly price: our rent + our +15% channel plan + fees folded into the nightly price
     // (Track fee setup, 2026-10-13: Direct rent x1.58; Airbnb/VRBO bookings already carry the +15% plan -> x1.375). ESTIMATE.
-    const eq = /airbnb|\babb\b|vrbo|homeaway/i.test(b.channel || "") ? 1.375 : 1.58;
+    const eq = /airbnb|\babb\b|vrbo|homeaway/i.test(b.channel || "") ? OTA_BASIS : PP_BASIS;
     const bench = rAvg(per.map(x => x.bench)), rent = b.gross_rent / b.nights, ours = rent * eq, gap = ours - bench, peak = per.some(x => x.peak);
     out.push({ set: state.set.name, home: label.get(b.comp_id), b, bench, rent, ours, gap, pc: gap / bench * 100, tot: gap / eq * b.nights, peak });
   }
