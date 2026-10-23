@@ -585,7 +585,7 @@ const HK_ALL = { "3676": [280, 95], "1205": [200, 65], "1206": [215, 70], "1302"
 // Fees on our nightly rent (Track API quotes 2026-10-22; claude/reference/mm-fees-2026-10-22.md): Guest Services Fee 11.1%
 // (9.5% + Beyond recovery) + damage waiver 7.5% on every channel, plus channel recovery (Airbnb 25% - Kim asked for 28% -,
 // VRBO 20%, Direct 0%). Was admin 8.3% + damage 5% + Airbnb 21.65% / VRBO 16.68% before 10/21.
-const FEE_GS = 0.111, FEE_DW = 0.075, FEE_AB = 0.25, FEE_VR = 0.20;
+const FEE_GS = 0.111, FEE_DW = 0.075, FEE_AB = 0.28, FEE_VR = 0.20; // Airbnb recovery 28% from 2026-10-23 (Brandon)
 const LOAD = { Airbnb: FEE_GS + FEE_DW + FEE_AB, VRBO: FEE_GS + FEE_DW + FEE_VR, Direct: FEE_GS + FEE_DW };
 const STAY_N = 3; // cleaning is spread over a typical 3-night stay (the comp check windows are 2–3 nights)
 // Peak nights: price toward the higher comps (Brandon, 2026-10-08; RULES.md section 0).
@@ -834,7 +834,7 @@ function homeDetail(homeId) {
     <h3 class="chh">Booking pace vs last year <span class="pill">ESTIMATE</span></h3>${paceHtml([homeId], c.label)}
     <h3 class="chh">Holidays and events: booked or not</h3>${homeHolidays(hb)}
     <div class="cal2" style="margin-top:6px"><div><h3 class="chh">Recent bookings</h3>${homeBookList(hb, "recent")}</div><div><h3 class="chh">Top bookings <span class="small muted">highest rent per night</span></h3>${homeBookList(hb, "top")}</div></div>
-    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, Guest Services Fee 11.1% + damage waiver 7.5%, Airbnb recovery 25% (Track quotes, 2026-10-22), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
+    <p class="small muted"><b>How "List at" works (ESTIMATE):</b> we take the comps' median all-in price per night for those dates (holidays, events and nights where half the comps are blocked use the higher comps, 75th percentile). Then we back out what we add on top of nightly rent: ${hk ? `cleaning ${fmt(hk[0])} shown + ${fmt(hk[1])} hidden (HK sheet) spread over ${STAY_N} nights` : "cleaning (not on the HK sheet for this home, so no list-at)"}, Guest Services Fee 11.1% + damage waiver 7.5%, Airbnb recovery 28% (Brandon 2026-10-23), and taxes (Airbnb 13.12% seen at checkout; direct ${(tD * 100).toFixed(1)}% from our own direct quotes). "List at" is the lower of the Airbnb and Direct results, rounded to $5, so we're at the market on both. MM fees never change. Lower = above the comps and booking 15+ points slower; Raise = 15%+ under the comps. Blocked = Airbnb calendar (blocked ≠ booked). VRBO comes from the KeyData exports and isn't wired in yet.</p>
     <p class="small muted">Sources: comp prices = latest pulls in this Rates Desk (Airbnb listing/checkout pages and manager direct checkouts, each with its link in "Search a stay"); calendars = Airbnb; bookings, owner stays, blocks, revenue and last booking = Track (read-only).</p>`;
   $("dlg").showModal(); drawHomeCal();
 }
@@ -984,7 +984,7 @@ function flagLists(S) {
 function flagHtml(S) {
   // Flags in per-night terms so the change can be typed straight into Beyond / Track.
   // gap per night = (our Airbnb stay total − comp median stay total) ÷ nights (both pre-tax listing totals; cleaning cancels out).
-  // Nightly rate change = that gap ÷ (1 + our fees on rent on Airbnb: guest services 11.1% + damage 7.5% + recovery 25%). ESTIMATE.
+  // Nightly rate change = that gap ÷ (1 + our fees on rent on Airbnb: guest services 11.1% + damage 7.5% + recovery 28%). ESTIMATE.
   const { red, low } = flagLists(S);
   const fd = k => new Date(k + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const n = s => Math.round((new Date(s.co) - new Date(s.ci)) / 864e5);
