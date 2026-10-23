@@ -2530,7 +2530,7 @@ async function buildColleenSheet() {
 // append-only). Accepted rate + minimum changes go on a Kolleen list (homes, dates, current, new - never comp data).
 const FD = { rows: null, dec: [], busy: false, kind: "*", show: "open" };
 const FD_KIND = { not_booking: "🔴 Not booking", fast_booking: "🟡 Booking fast", fast_filling: "🟡 Comps filling fast", booked_low: "🟡 Booked too low",
-  stuck_at_min: "At Beyond's minimum", min_stay: "Minimum stay", segment_pace: "Neighborhood pace", owner_min_block: "Owner minimum above market", gap_blocked: "🟡 Gap nobody can book" };
+  stuck_at_min: "At Beyond's minimum", min_stay: "Minimum stay", segment_pace: "Neighborhood pace", owner_min_block: "Owner minimum above market", gap_blocked: "🟡 Gap nobody can book", channel_fee: "Channel fees (what we keep)", total_price: "🟡 Airbnb total vs comps" };
 const FD_DATED = ["fast_filling", "booked_low", "owner_min_block", "gap_blocked"];
 // Why a decision was made (hotel research: log every override with a reason, then check it after the stay)
 const FD_WHY = { accept: ["Agree with the numbers", "Owner asked", "Local knowledge", "Other"], reject: ["Comps are wrong", "Owner rule / HOA", "Already fixed", "Home issue (photos, reviews, repair)", "Event / season the tool missed", "Too risky", "Other"], later: ["Need more data", "Ask owner first", "Other"] };
